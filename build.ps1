@@ -30,7 +30,7 @@ if($Package){
   if($Installer){
     New-Item -ItemType Directory -Force "$root/build/installers" | Out-Null
     Get-ChildItem "$root/build/installers" -Filter 'Aeromon-*.msi' -ErrorAction SilentlyContinue | Remove-Item -Force
-    & "$jdk/bin/jpackage.exe" --type msi --name Aeromon --app-version $Version --vendor Aeromon --description 'Aeromon community modpack launcher' --icon "$root/src/main/resources/branding/icon.ico" --input "$root/build/dist" --main-jar aeromon-launcher.jar --main-class cc.aeromon.launcher.Main --dest "$root/build/installers" --runtime-image "$root/build/runtime" --java-options '-Xmx512m'
+    & "$jdk/bin/jpackage.exe" --type msi --win-per-user-install --install-dir Aeromon --win-menu --win-shortcut --name Aeromon --app-version $Version --vendor Aeromon --description 'Aeromon community modpack launcher' --icon "$root/src/main/resources/branding/icon.ico" --input "$root/build/dist" --main-jar aeromon-launcher.jar --main-class cc.aeromon.launcher.Main --dest "$root/build/installers" --runtime-image "$root/build/runtime" --java-options '-Xmx512m'
     if($LASTEXITCODE){throw 'MSI installer creation failed'}
   }
 }
