@@ -57,8 +57,20 @@ public final class Main {
             game.onExit().thenRun(()->ui(()->{play.setEnabled(true);status.setText("Minecraft closed");}));
         }));
         window.addWindowListener(new java.awt.event.WindowAdapter(){public void windowClosed(java.awt.event.WindowEvent e){worker.shutdown();}});
-        window.setVisible(true);splash=new LoadingSplash(window);splash.showLoading("Checking launcher updates");
-        run(()->{try{if(LauncherUpdate.check(pack.home,this::message)){ui(()->{splash.finish();window.dispose();System.exit(0);});return;}}catch(Exception e){message("Launcher update check unavailable; continuing with this version");}refreshRelease();});
+        splash=new LoadingSplash(window);splash.showLoading("Preparing Aeromon runtime");
+        worker.submit(()->{
+            try{
+                JavaRuntime.ensure(pack.home,this::message);
+            }catch(Exception failure){
+                ui(()->{splash.finish();JOptionPane.showMessageDialog(splash,"Unable to prepare Java: "+failure.getMessage(),"Aeromon needs attention",JOptionPane.ERROR_MESSAGE);splash.dispose();window.dispose();});
+                worker.shutdown();return;
+            }
+            ui(()->run(()->{
+                try{if(LauncherUpdate.check(pack.home,this::message)){ui(()->{splash.finish();window.dispose();System.exit(0);});return;}}
+                catch(Exception e){message("Launcher update check unavailable; continuing with this version");}
+                ui(()->window.setVisible(true));refreshRelease();
+            }));
+        });
     }
     static Path defaultHome(){String os=System.getProperty("os.name").toLowerCase();String base=os.contains("win")?System.getenv("APPDATA"):os.contains("mac")?System.getProperty("user.home")+"/Library/Application Support":System.getenv().getOrDefault("XDG_DATA_HOME",System.getProperty("user.home")+"/.local/share");return Path.of(base,"Aeromon");}
     static JLabel label(String text,int size,Color color){var l=new JLabel(text);l.setForeground(color);l.setFont(new Font("Dialog",Font.BOLD,size));return l;}
