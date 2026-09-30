@@ -55,6 +55,15 @@ final class Minecraft {
     }
     static byte[] random(int count){byte[] bytes=new byte[count];new SecureRandom().nextBytes(bytes);return bytes;}
     Path java()throws Exception{return JavaRuntime.ensure(home,progress);}
+    Path gameJava()throws Exception{
+        Path executable=java();
+        if(os().equals("windows")){
+            Path windowed=executable.resolveSibling("javaw.exe");
+            if(!Files.isRegularFile(windowed))throw new IOException("Windowed Java runtime is missing. Repair the Java runtime and retry.");
+            return windowed;
+        }
+        return executable;
+    }
     static String os(){String value=System.getProperty("os.name").toLowerCase();return value.contains("win")?"windows":value.contains("mac")?"osx":"linux";}
     void artifact(JsonObject download,Path target)throws Exception {
         String hash=download.has("sha1")?download.get("sha1").getAsString():null;
@@ -216,7 +225,7 @@ final class Minecraft {
         Map<String,Path> libraries=new LinkedHashMap<>();for(var version:List.of(base,mod))for(var e:version.getAsJsonArray("libraries")){var lib=e.getAsJsonObject();if(!allowed(lib))continue;String name=lib.get("name").getAsString();Path path=lib.has("downloads")&&lib.getAsJsonObject("downloads").has("artifact")?runtimeRoot.resolve("libraries/"+lib.getAsJsonObject("downloads").getAsJsonObject("artifact").get("path").getAsString()):runtimeRoot.resolve("libraries/"+name.split(":")[0].replace('.','/')+"/"+name.split(":")[1]+"/"+name.split(":")[2]+"/"+name.split(":")[1]+"-"+name.split(":")[2]+(name.split(":").length>3?"-"+name.split(":")[3]:"")+".jar");if(Files.exists(path))libraries.put(name.split(":")[0]+":"+name.split(":")[1]+(name.split(":").length>3?":"+name.split(":")[3]:""),path);}
         String cp=String.join(File.pathSeparator,libraries.values().stream().map(Path::toString).toList());
         Map<String,String> vars=new HashMap<>();vars.put("auth_player_name",session.name());vars.put("auth_uuid",session.uuid());vars.put("auth_access_token",session.token());vars.put("auth_xuid","");vars.put("clientid","");vars.put("user_type","msa");vars.put("version_name","neoforge-"+neo);vars.put("version_type","release");vars.put("game_directory",gameDir.toString());vars.put("assets_root",runtimeRoot.resolve("assets").toString());vars.put("assets_index_name",base.getAsJsonObject("assetIndex").get("id").getAsString());vars.put("natives_directory",runtimeRoot.resolve("natives").toString());vars.put("launcher_name","Aeromon");vars.put("launcher_version","0.1.0");vars.put("classpath",cp);vars.put("library_directory",runtimeRoot.resolve("libraries").toString());vars.put("classpath_separator",File.pathSeparator);
-        var args=new ArrayList<String>();args.add(java().toString());args.add("-Xmx"+memory+"M");args.addAll(arguments(base,"jvm",vars));args.addAll(arguments(mod,"jvm",vars));if(os().equals("osx"))args.add("-XstartOnFirstThread");args.add(mod.get("mainClass").getAsString());args.addAll(arguments(base,"game",vars));args.addAll(arguments(mod,"game",vars));if(offline){args.add("--disableMultiplayer");args.add("--disableChat");}else{args.add("--quickPlayMultiplayer");args.add("mc.aeromon.cc");}
+        var args=new ArrayList<String>();args.add(gameJava().toString());args.add("-Xmx"+memory+"M");args.addAll(arguments(base,"jvm",vars));args.addAll(arguments(mod,"jvm",vars));if(os().equals("osx"))args.add("-XstartOnFirstThread");args.add(mod.get("mainClass").getAsString());args.addAll(arguments(base,"game",vars));args.addAll(arguments(mod,"game",vars));if(offline){args.add("--disableMultiplayer");args.add("--disableChat");}else{args.add("--quickPlayMultiplayer");args.add("mc.aeromon.cc");}
         Files.createDirectories(runtimeRoot.resolve("natives"));Files.createDirectories(gameDir.resolve("logs"));Path log=gameDir.resolve("logs/latest.log");progress.accept("Launching Aeromon…");var process=new ProcessBuilder(args).directory(gameDir.toFile()).redirectErrorStream(true).redirectOutput(log.toFile()).start();
         Path pid=home.resolve("launcher/game.pid");Files.writeString(pid,Long.toString(process.pid()));process.onExit().thenRun(()->{try{Files.deleteIfExists(pid);}catch(IOException ignored){}});return process;
     }

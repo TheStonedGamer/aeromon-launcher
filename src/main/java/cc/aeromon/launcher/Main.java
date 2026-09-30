@@ -101,7 +101,7 @@ public final class Main {
         if(!Files.isRegularFile(neoMetadata))throw new java.io.IOException("NeoForge profile is missing. Repair the Aeromon runtime and retry.");
         profile.addProperty("lastVersionId",neoVersion);
         profile.addProperty("gameDir",gameDir.toString());
-        profile.addProperty("javaDir",runtime.java().toString());
+        profile.addProperty("javaDir",runtime.gameJava().toString());
         profile.addProperty("javaArgs","-Xmx"+memory+"M");
         document.getAsJsonObject("profiles").add("aeromon",profile);
         document.addProperty("selectedProfile","aeromon");
