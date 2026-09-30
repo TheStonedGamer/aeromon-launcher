@@ -22,8 +22,8 @@ final class CredentialStore {
         if (token == null || token.isBlank()) throw new IllegalArgumentException("Microsoft refresh token is empty");
         switch (platform()) {
             case WINDOWS -> windowsWrite(home, token);
-            case MAC -> commandWrite("security", "add-generic-password", "-U", "-s", service(home), "-a", "microsoft", "-w", token);
-            case LINUX -> commandWrite("secret-tool", "store", "--label=Aeromon Microsoft sign-in", "service", service(home), "account", "microsoft", token);
+            case MAC -> macWrite(home, token);
+            case LINUX -> runWithInput(token, "secret-tool", "store", "--label=Aeromon Microsoft sign-in", "service", service(home), "account", "microsoft");
             case OTHER -> throw new IOException("Remembering Microsoft sign-in is not supported on this operating system");
         }
     }
@@ -72,6 +72,15 @@ final class CredentialStore {
     private static void windowsClear(Path home) throws IOException { Files.deleteIfExists(windowsFile(home)); }
     private static Path windowsFile(Path home) { return home.resolve("launcher/microsoft-refresh-token.dpapi"); }
 
+    private static void macWrite(Path home, String token) throws Exception {
+        String service = service(home);
+        String script = "import Foundation; import Security; " +
+            "let q:[String:Any]=[kSecClass as String:kSecClassGenericPassword,kSecAttrService as String:\"" + service + "\",kSecAttrAccount as String:\"microsoft\"]; " +
+            "let d=FileHandle.standardInput.readDataToEndOfFile(); SecItemDelete(q as CFDictionary); var a=q; a[kSecValueData as String]=d; " +
+            "let s=SecItemAdd(a as CFDictionary,nil); if s != errSecSuccess { fputs(\"Keychain save failed: \\(s)\\n\",stderr); exit(1) }";
+        runWithInput(token, "swift", "-e", script);
+    }
+
     private static byte[] protect(String token) throws Exception {
         String value = Base64.getEncoder().encodeToString(token.getBytes(StandardCharsets.UTF_8));
         String script = "$p=[Convert]::FromBase64String('" + value + "');" +
@@ -111,6 +120,17 @@ final class CredentialStore {
         Process process = new ProcessBuilder(command).redirectErrorStream(true).start();
         byte[] output = process.getInputStream().readAllBytes();
         if (!process.waitFor(15, java.util.concurrent.TimeUnit.SECONDS)) { process.destroyForcibly(); throw new IOException("Credential store timed out"); }
+        if (process.exitValue() != 0) {
+            String detail = new String(output, StandardCharsets.UTF_8).strip();
+            throw new IOException(detail.isEmpty() ? "OS credential store command failed" : detail);
+        }
+    }
+
+    private static void runWithInput(String input, String... command) throws Exception {
+        Process process = new ProcessBuilder(command).redirectErrorStream(true).start();
+        try (var stdin = process.getOutputStream()) { stdin.write(input.getBytes(StandardCharsets.UTF_8)); stdin.write('\n'); }
+        byte[] output = process.getInputStream().readAllBytes();
+        if (!process.waitFor(30, java.util.concurrent.TimeUnit.SECONDS)) { process.destroyForcibly(); throw new IOException("Credential store timed out"); }
         if (process.exitValue() != 0) {
             String detail = new String(output, StandardCharsets.UTF_8).strip();
             throw new IOException(detail.isEmpty() ? "OS credential store command failed" : detail);
