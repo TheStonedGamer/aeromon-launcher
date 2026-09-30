@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Aeromon Launcher
+Comment=Install and update the Aeromon Pixelmon pack
+Exec=aeromon
+Icon=aeromon
+Terminal=false
+Categories=Game;
+StartupWMClass=cc-aeromon-launcher-Main
