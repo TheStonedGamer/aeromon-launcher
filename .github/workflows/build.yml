@@ -30,7 +30,24 @@ jobs:
           mkdir -p build/tests
           javac -encoding UTF-8 --release 21 -cp "build/dist/aeromon-launcher.jar${{ runner.os == 'Windows' && ';' || ':' }}build/dist/gson.jar" -d build/tests src/test/java/cc/aeromon/launcher/UpdaterTest.java
           java -cp "build/tests${{ runner.os == 'Windows' && ';' || ':' }}build/dist/*" cc.aeromon.launcher.UpdaterTest
+      - name: Archive native package with executable permissions
+        shell: bash
+        run: |
+          mkdir -p build/releases
+          python - <<'PY'
+          import os, pathlib, shutil, tarfile
+          system = os.environ['RUNNER_OS']
+          arch = os.environ['RUNNER_ARCH'].lower()
+          suffix = {'Windows':'windows','Linux':'linux','macOS':'macos'}[system]
+          name = f'Aeromon-1.0.0-{suffix}-{arch}'
+          if system == 'Windows':
+              shutil.make_archive(f'build/releases/{name}', 'zip', 'build/packages')
+          else:
+              with tarfile.open(f'build/releases/{name}.tar.gz', 'w:gz') as archive:
+                  for path in pathlib.Path('build/packages').iterdir():
+                      archive.add(path, arcname=path.name)
+          PY
       - uses: actions/upload-artifact@v4
         with:
           name: Aeromon-${{ matrix.os }}
-          path: build/packages/
+          path: build/releases/
