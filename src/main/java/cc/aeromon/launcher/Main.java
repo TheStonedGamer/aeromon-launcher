@@ -146,7 +146,10 @@ public final class Main {
                     return;
                 }
             }
-            throw new java.io.IOException("Official Minecraft Launcher was not found. Install Minecraft Launcher from minecraft.net, then retry.");
+            Path executable=bootstrapOfficialWindows(pack.home.resolve("instance"),message);
+            new ProcessBuilder(executable.toString(),"--workDir",root.toString()).directory(executable.getParent().toFile()).start();
+            message.accept("Minecraft Launcher installed for this Aeromon instance. Select Aeromon, sign in, then Play.");
+            return;
         }
         if(os.contains("mac"))new ProcessBuilder("open","-a","Minecraft","--args","--workDir",root.toString()).start();
         else new ProcessBuilder("minecraft-launcher","--workDir",root.toString()).start();
@@ -160,6 +163,30 @@ public final class Main {
             return preferred;
         }
         return preferred;
+    }
+    static Path bootstrapOfficialWindows(Path instance,java.util.function.Consumer<String> message)throws Exception {
+        Path directory=instance.resolve("official-launcher");Files.createDirectories(directory);
+        Path executable=directory.resolve("Minecraft.exe"),staged=directory.resolve("Minecraft.exe.part");
+        if(!Files.isRegularFile(executable)){
+            message.accept("Installing the official Minecraft Launcher for this instance…");
+            try{
+                var client=java.net.http.HttpClient.newBuilder().connectTimeout(java.time.Duration.ofSeconds(30)).followRedirects(java.net.http.HttpClient.Redirect.NORMAL).build();
+                var request=java.net.http.HttpRequest.newBuilder(URI.create("https://launcher.mojang.com/download/Minecraft.exe")).timeout(java.time.Duration.ofMinutes(5)).GET().build();
+                var response=client.send(request,java.net.http.HttpResponse.BodyHandlers.ofFile(staged));
+                if(response.statusCode()!=200||Files.size(staged)<100000)throw new java.io.IOException("Minecraft Launcher download failed");
+                verifyOfficialWindows(staged);
+                Files.move(staged,executable,StandardCopyOption.REPLACE_EXISTING);
+            }finally{Files.deleteIfExists(staged);}
+        }
+        verifyOfficialWindows(executable);
+        return executable;
+    }
+    static void verifyOfficialWindows(Path executable)throws Exception {
+        String path=executable.toAbsolutePath().toString().replace("'","''");
+        String script="$s=Get-AuthenticodeSignature -LiteralPath '"+path+"';if($s.Status -ne 'Valid' -or $s.SignerCertificate.Subject -notmatch 'O=(Mojang AB|Microsoft Corporation)(,|$)'){exit 1}";
+        Process process=new ProcessBuilder("powershell.exe","-NoProfile","-NonInteractive","-WindowStyle","Hidden","-Command",script).redirectErrorStream(true).start();
+        process.getInputStream().readAllBytes();
+        if(process.waitFor()!=0)throw new java.io.IOException("Minecraft Launcher publisher signature could not be verified");
     }
     public static void main(String[] args)throws Exception {
         Path home=defaultHome();for(int i=0;i<args.length;i++)if(args[i].equals("--home"))home=Path.of(args[++i]);
