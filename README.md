@@ -16,7 +16,7 @@ The first implementation includes the branded desktop interface, pinned Ed25519 
 
 Stable pack 1.0.5 has been verified and installed from the live feed. The Windows application image has been built and opened with a bundled Java 21 runtime. Minecraft 1.21.1 and NeoForge 21.1.248 installation succeeded in an isolated test instance.
 
-**Minecraft API approval is pending.** Microsoft OAuth, Xbox Live and XSTS succeeded in the live sign-in test, but Minecraft Services returned HTTP 403 for Aeromon's new app ID. The Mojang AppID Review request was submitted on September 30, 2026. Licensed sign-in, game launch and server join cannot be declared working until approval and a successful live test. macOS/Linux packages are built by CI; gameplay on those systems remains unverified. Native package signing, secure refresh-token persistence and launcher self-update remain release work.
+**Minecraft API approval is pending.** Microsoft OAuth, Xbox Live and XSTS succeeded in the live sign-in test, but Minecraft Services returned HTTP 403 for Aeromon's new app ID. The Mojang AppID Review request was submitted on September 30, 2026. Licensed sign-in, game launch and server join cannot be declared working until approval and a successful live test. All four CI targets (Windows, Linux, macOS Intel and Apple Silicon) passed packaging and updater checks; gameplay on those systems remains unverified. Native package signing, secure refresh-token persistence remain release work. Signed JAR self-update and a managed Temurin JRE are implemented; the first signed public launcher release is still needed to activate automatic distribution. Offline launch provides local pack testing without Microsoft sign-in.
 
 ## Build and run
 
