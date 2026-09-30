@@ -1,0 +1,36 @@
+name: Launcher packages
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, launcher-implementation]
+  pull_request:
+jobs:
+  package:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest, macos-15, macos-15-intel]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Build Windows wrapper
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./build.ps1 -Package
+      - name: Build macOS or Linux wrapper
+        if: runner.os != 'Windows'
+        run: bash build.sh --package
+      - name: Updater checks
+        shell: bash
+        run: |
+          mkdir -p build/tests
+          javac -encoding UTF-8 --release 21 -cp "build/dist/aeromon-launcher.jar${{ runner.os == 'Windows' && ';' || ':' }}build/dist/gson.jar" -d build/tests src/test/java/cc/aeromon/launcher/UpdaterTest.java
+          java -cp "build/tests${{ runner.os == 'Windows' && ';' || ':' }}build/dist/*" cc.aeromon.launcher.UpdaterTest
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Aeromon-${{ matrix.os }}
+          path: build/packages/
