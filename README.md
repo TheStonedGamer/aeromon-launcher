@@ -19,3 +19,5 @@ Planning and initial implementation. There is no downloadable launcher release y
 No API keys, account credentials, signing private keys, Minecraft game files, or third-party mod jars belong in this repository. CurseForge access, if approved, will follow its API and each project's distribution settings.
 
 See [architecture](docs/ARCHITECTURE.md) for the initial design.
+
+The interface will follow the [visual direction](docs/VISUAL-DIRECTION.md): a retro, atmospheric game portal with original Aeromon artwork.
