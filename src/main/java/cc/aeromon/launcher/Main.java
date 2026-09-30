@@ -82,7 +82,12 @@ public final class Main {
     static void ui(Runnable r){SwingUtilities.invokeLater(r);}
     void message(String message){ui(()->{status.setText(message);if(splash!=null)splash.message=message;});}
     interface Task {void run()throws Exception;}
-    void run(Task task){ui(()->{progress.setVisible(true);progress.setIndeterminate(true);install.setEnabled(false);repair.setEnabled(false);play.setEnabled(false);official.setEnabled(false);offline.setEnabled(false);signIn.setEnabled(false);channel.setEnabled(false);});worker.submit(()->{try{task.run();}catch(Exception e){message(e.getMessage());ui(()->JOptionPane.showMessageDialog(window,e.getMessage(),"Aeromon needs attention",JOptionPane.ERROR_MESSAGE));}finally{ui(()->{progress.setVisible(false);if(splash!=null)splash.finish();channel.setEnabled(true);signIn.setEnabled(true);official.setEnabled(true);install.setEnabled(release!=null && (game==null || !game.isAlive()));repair.setEnabled(install.isEnabled());offline.setEnabled(install.isEnabled());play.setEnabled(release!=null && session!=null && (game==null || !game.isAlive()));});}});}
+    void reportFailure(Exception failure){
+        String detail=LauncherErrors.describe(failure);Path log=LauncherErrors.record(pack.home,failure);
+        message(detail);String dialog=detail+(log==null?"":"\n\nDiagnostic log: "+log);
+        ui(()->JOptionPane.showMessageDialog(window,dialog,"Aeromon needs attention",JOptionPane.ERROR_MESSAGE));
+    }
+    void run(Task task){ui(()->{progress.setVisible(true);progress.setIndeterminate(true);install.setEnabled(false);repair.setEnabled(false);play.setEnabled(false);official.setEnabled(false);offline.setEnabled(false);signIn.setEnabled(false);channel.setEnabled(false);});worker.submit(()->{try{task.run();}catch(Exception e){reportFailure(e);}finally{ui(()->{progress.setVisible(false);if(splash!=null)splash.finish();channel.setEnabled(true);signIn.setEnabled(true);official.setEnabled(true);install.setEnabled(release!=null && (game==null || !game.isAlive()));repair.setEnabled(install.isEnabled());offline.setEnabled(install.isEnabled());play.setEnabled(release!=null && session!=null && (game==null || !game.isAlive()));});}});}
     void refresh(){run(this::refreshRelease);}
     void restoreSession(){
         try{session=Minecraft.restore(pack.home,clientId(),this::message);if(session!=null){CredentialStore.save(pack.home,session.refreshToken());ui(()->{account.setText(session.name());signIn.setText("Sign out");});}}
