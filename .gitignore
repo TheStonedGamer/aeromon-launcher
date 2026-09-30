@@ -1,0 +1,16 @@
+.gradle/
+build/
+out/
+target/
+*.class
+*.log
+*.key
+*.pem
+*.p12
+*.jks
+.env
+.env.*
+.idea/
+.vscode/
+Thumbs.db
+.DS_Store
