@@ -83,7 +83,8 @@ final class CredentialStore {
 
     private static byte[] protect(String token) throws Exception {
         String value = Base64.getEncoder().encodeToString(token.getBytes(StandardCharsets.UTF_8));
-        String script = "$p=[Convert]::FromBase64String('" + value + "');" +
+        String script = "$ErrorActionPreference='Stop'; $ProgressPreference='SilentlyContinue'; Add-Type -AssemblyName System.Security;" +
+            "$p=[Convert]::FromBase64String('" + value + "');" +
             "$c=[Security.Cryptography.ProtectedData]::Protect($p,$null,[Security.Cryptography.DataProtectionScope]::CurrentUser);" +
             "[Console]::Write([Convert]::ToBase64String($c))";
         return Base64.getDecoder().decode(runPowerShell(script).trim());
@@ -91,7 +92,8 @@ final class CredentialStore {
 
     private static String unprotect(byte[] protectedToken) throws Exception {
         String value = Base64.getEncoder().encodeToString(protectedToken);
-        String script = "$c=[Convert]::FromBase64String('" + value + "');" +
+        String script = "$ErrorActionPreference='Stop'; $ProgressPreference='SilentlyContinue'; Add-Type -AssemblyName System.Security;" +
+            "$c=[Convert]::FromBase64String('" + value + "');" +
             "$p=[Security.Cryptography.ProtectedData]::Unprotect($c,$null,[Security.Cryptography.DataProtectionScope]::CurrentUser);" +
             "[Console]::Write([Convert]::ToBase64String($p))";
         return new String(Base64.getDecoder().decode(runPowerShell(script).trim()), StandardCharsets.UTF_8);
@@ -99,7 +101,8 @@ final class CredentialStore {
 
     private static String runPowerShell(String script) throws Exception {
         Process process = new ProcessBuilder("powershell.exe", "-NoLogo", "-NoProfile", "-NonInteractive", "-EncodedCommand",
-            Base64.getEncoder().encodeToString(script.getBytes(StandardCharsets.UTF_16LE))).redirectErrorStream(true).start();
+            Base64.getEncoder().encodeToString(script.getBytes(StandardCharsets.UTF_16LE)))
+            .redirectError(ProcessBuilder.Redirect.DISCARD).start();
         byte[] output = process.getInputStream().readAllBytes();
         if (!process.waitFor(15, java.util.concurrent.TimeUnit.SECONDS)) { process.destroyForcibly(); throw new IOException("Windows credential protection timed out"); }
         String text = new String(output, StandardCharsets.UTF_8).trim();
