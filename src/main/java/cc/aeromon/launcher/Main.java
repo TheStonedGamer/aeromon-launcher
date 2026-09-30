@@ -36,8 +36,9 @@ public final class Main {
         window.setContentPane(new WindowFrame(this,new LauncherView(this)));
         channel.addActionListener(e->refresh());
         signIn.addActionListener(e->run(()->{
-            if(session!=null){session=null;ui(()->{account.setText("Not signed in");signIn.setText("Sign in with Microsoft");});return;}
+            if(session!=null){CredentialStore.clear(pack.home);session=null;ui(()->{account.setText("Not signed in");signIn.setText("Sign in with Microsoft");});return;}
             session=Minecraft.login(clientId(),this::message);
+            CredentialStore.save(pack.home,session.refreshToken());
             ui(()->{account.setText(session.name());signIn.setText("Sign out");});
         }));
         install.setEnabled(false);repair.setEnabled(false);play.setEnabled(false);
@@ -68,7 +69,9 @@ public final class Main {
             ui(()->run(()->{
                 try{if(LauncherUpdate.check(pack.home,this::message)){ui(()->{splash.finish();window.dispose();System.exit(0);});return;}}
                 catch(Exception e){message("Launcher update check unavailable; continuing with this version");}
-                ui(()->window.setVisible(true));refreshRelease();
+                ui(()->window.setVisible(true));
+                restoreSession();
+                refreshRelease();
             }));
         });
     }
@@ -81,6 +84,10 @@ public final class Main {
     interface Task {void run()throws Exception;}
     void run(Task task){ui(()->{progress.setVisible(true);progress.setIndeterminate(true);install.setEnabled(false);repair.setEnabled(false);play.setEnabled(false);official.setEnabled(false);offline.setEnabled(false);signIn.setEnabled(false);channel.setEnabled(false);});worker.submit(()->{try{task.run();}catch(Exception e){message(e.getMessage());ui(()->JOptionPane.showMessageDialog(window,e.getMessage(),"Aeromon needs attention",JOptionPane.ERROR_MESSAGE));}finally{ui(()->{progress.setVisible(false);if(splash!=null)splash.finish();channel.setEnabled(true);signIn.setEnabled(true);official.setEnabled(true);install.setEnabled(release!=null && (game==null || !game.isAlive()));repair.setEnabled(install.isEnabled());offline.setEnabled(install.isEnabled());play.setEnabled(release!=null && session!=null && (game==null || !game.isAlive()));});}});}
     void refresh(){run(this::refreshRelease);}
+    void restoreSession(){
+        try{session=Minecraft.restore(pack.home,clientId(),this::message);if(session!=null){CredentialStore.save(pack.home,session.refreshToken());ui(()->{account.setText(session.name());signIn.setText("Sign out");});}}
+        catch(Exception failure){try{CredentialStore.clear(pack.home);}catch(Exception ignored){}session=null;message("Saved Microsoft sign-in expired. Sign in again to continue.");}
+    }
     void refreshRelease()throws Exception{release=pack.latest((String)channel.getSelectedItem());String installed=pack.installed();ui(()->{
         version.setText("AEROMON "+release.version()+"  /  MINECRAFT "+release.manifest().get("minecraft").getAsString()+"  /  NEOFORGE "+release.manifest().get("neoforge").getAsString());
         String releaseNotes=release.manifest().get("notes").getAsString();notes.setText(releaseNotes.startsWith("Imported from")?"Pixelmon meets Create Aeronautics. Explore the Aeromon world with the current community pack.":releaseNotes);
@@ -192,7 +199,7 @@ public final class Main {
         Path home=defaultHome();for(int i=0;i<args.length;i++)if(args[i].equals("--home"))home=Path.of(args[++i]);
         var options=java.util.Arrays.asList(args);
         if(options.contains("--official-launcher")){var pack=new Pack(home);openOfficialLauncher(pack,pack.latest("stable"),8160,System.out::println);return;}
-        if(options.contains("--official-offline-test")){var pack=new Pack(home);var release=pack.latest("stable");pack.install(release,System.out::println);var runtime=new Minecraft(home,System.out::println);Path root=officialLauncherRoot(runtime.root),gameDir=root.resolve("Aeromon");runtime.prepare(release.manifest(),root);runtime.syncOfficialInstance(release,gameDir);var profile=com.google.gson.JsonParser.parseString(Files.readString(root.resolve("launcher_profiles.json"))).getAsJsonObject();if(!"aeromon".equals(profile.get("selectedProfile").getAsString()))throw new java.io.IOException("Aeromon profile is not selected");var process=runtime.launch(release.manifest(),new Minecraft.Session("AeromonTest",java.util.UUID.nameUUIDFromBytes("OfflinePlayer:AeromonTest".getBytes(java.nio.charset.StandardCharsets.UTF_8)).toString().replace("-",""),"0"),8160,true,root,gameDir);System.out.println("Offline Aeromon NeoForge process "+process.pid()+"; inspect "+gameDir.resolve("logs/latest.log"));return;}
+        if(options.contains("--official-offline-test")){var pack=new Pack(home);var release=pack.latest("stable");pack.install(release,System.out::println);var runtime=new Minecraft(home,System.out::println);Path root=officialLauncherRoot(runtime.root),gameDir=root.resolve("Aeromon");runtime.prepare(release.manifest(),root);runtime.syncOfficialInstance(release,gameDir);var profile=com.google.gson.JsonParser.parseString(Files.readString(root.resolve("launcher_profiles.json"))).getAsJsonObject();if(!"aeromon".equals(profile.get("selectedProfile").getAsString()))throw new java.io.IOException("Aeromon profile is not selected");var process=runtime.launch(release.manifest(),new Minecraft.Session("AeromonTest",java.util.UUID.nameUUIDFromBytes("OfflinePlayer:AeromonTest".getBytes(java.nio.charset.StandardCharsets.UTF_8)).toString().replace("-",""),"0",null),8160,true,root,gameDir);System.out.println("Offline Aeromon NeoForge process "+process.pid()+"; inspect "+gameDir.resolve("logs/latest.log"));return;}
         if(options.contains("--offline-test")){var pack=new Pack(home);var release=pack.latest("stable");pack.install(release,System.out::println);var process=new Minecraft(home,System.out::println).launchOffline(release.manifest(),6144);System.out.println("Offline Minecraft PID "+process.pid());return;}
         if(options.contains("--activate-update")){LauncherUpdate.activate(home,args[options.indexOf("--update-version")+1],Long.parseLong(args[options.indexOf("--activate-update")+1]));return;}
         if(java.util.Arrays.asList(args).contains("--login-test")){var session=Minecraft.login("6e76a2c9-5a48-41d6-9e6a-3aa2e60c36fa",System.out::println);System.out.println("Minecraft profile verified: "+session.name());return;}
