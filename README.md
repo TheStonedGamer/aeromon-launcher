@@ -44,3 +44,9 @@ No API keys, account credentials, signing private keys, Minecraft game files, or
 See [architecture](docs/ARCHITECTURE.md) for the initial design.
 
 The interface will follow the [visual direction](docs/VISUAL-DIRECTION.md): a retro, atmospheric game portal with original Aeromon artwork.
+
+## Personal client mods
+
+Open **Client mods** in the launcher sidebar, then **Add JARs** to import one or more local mod files. Enable/disable and remove controls apply to these personal additions. Minecraft must be closed to change them. The original imported copies are stored separately in launcher/custom-mods; enabled copies load from instance/mods. Removed originals are retained in launcher/custom-mod-trash.
+
+Pack updates and repair preserve personal additions and their disabled state. A new pack release that claims a personal JAR's filename blocks with instructions to remove the custom copy first. Required pack files cannot be replaced through the custom manager. Mod compatibility is determined by Minecraft and the mod loader; importing a valid JAR does not establish compatibility.

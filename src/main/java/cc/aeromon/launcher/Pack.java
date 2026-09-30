@@ -64,6 +64,7 @@ final class Pack {
             Path gamePid=state.resolve("game.pid");
             if(Files.exists(gamePid)){long pid=Long.parseLong(Files.readString(gamePid).trim());if(ProcessHandle.of(pid).map(ProcessHandle::isAlive).orElse(false))throw new IOException("Close Minecraft before updating the pack");Files.delete(gamePid);}
             recover();
+            new CustomMods(this).checkPack(release);
             Path staging=state.resolve("staging");Files.createDirectories(staging);
             Map<String,JsonObject> desired=new LinkedHashMap<>();
             for(var element:release.manifest.getAsJsonArray("files")){var file=element.getAsJsonObject();String path=file.get("path").getAsString();safe(instance,path);if(desired.putIfAbsent(path.toLowerCase(Locale.ROOT),file)!=null)throw new IOException("Duplicate pack path");}
