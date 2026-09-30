@@ -67,6 +67,8 @@ jobs:
         run: |
           if [[ "$RUNNER_OS" == "macOS" ]]; then
             jpackage --type dmg --name Aeromon --app-version "$AEROMON_VERSION" --vendor Aeromon --input build/dist --main-jar aeromon-launcher.jar --main-class cc.aeromon.launcher.Main --dest build/releases --runtime-image build/runtime --icon src/main/resources/branding/icon.icns --java-options '-Xmx512m'
+            arch=$(printf '%s' "$RUNNER_ARCH" | tr '[:upper:]' '[:lower:]')
+            mv "build/releases/Aeromon-$AEROMON_VERSION.dmg" "build/releases/Aeromon-$AEROMON_VERSION-macos-$arch.dmg"
           else
             jpackage --type deb --name aeromon --app-version "$AEROMON_VERSION" --vendor Aeromon --input build/dist --main-jar aeromon-launcher.jar --main-class cc.aeromon.launcher.Main --dest build/releases --runtime-image build/runtime --icon src/main/resources/branding/icon.png --java-options '-Xmx512m'
           fi
