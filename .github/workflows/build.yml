@@ -45,6 +45,8 @@ jobs:
           mkdir -p build/tests
           javac -encoding UTF-8 --release 21 -cp "build/dist/aeromon-launcher.jar${{ runner.os == 'Windows' && ';' || ':' }}build/dist/gson.jar" -d build/tests src/test/java/cc/aeromon/launcher/UpdaterTest.java
           java -cp "build/tests${{ runner.os == 'Windows' && ';' || ':' }}build/dist/*" cc.aeromon.launcher.UpdaterTest
+          javac -encoding UTF-8 --release 21 -cp "build/dist/aeromon-launcher.jar${{ runner.os == 'Windows' && ';' || ':' }}build/dist/gson.jar" -d build/tests src/test/java/cc/aeromon/launcher/DeltaUpdateTest.java
+          java -cp "build/tests${{ runner.os == 'Windows' && ';' || ':' }}build/dist/*" cc.aeromon.launcher.DeltaUpdateTest
       - name: Archive native package with executable permissions
         shell: bash
         run: |

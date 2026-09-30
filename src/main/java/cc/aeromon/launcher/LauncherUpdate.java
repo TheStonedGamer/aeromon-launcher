@@ -11,8 +11,35 @@ import java.util.function.Consumer;
 /** Signed JAR updates live in user storage, so native installs need no elevation. */
 final class LauncherUpdate {
     static final String VERSION=LauncherUpdate.class.getPackage().getImplementationVersion()==null?"1.0.0":LauncherUpdate.class.getPackage().getImplementationVersion();
-    static final String FEED="https://github.com/TheStonedGamer/aeromon-launcher/releases/latest/download/launcher-channel.json";
-    static Path java(){return Path.of(System.getProperty("java.home"),"bin",Minecraft.os().equals("windows")?"java.exe":"java");}
+    static final String FEED="https://aeromon.cc/updates/launcher-channel.json";
+    static Path java(){return Path.of(System.getProperty("java.home"),"bin",Minecraft.os().equals("windows")?"javaw.exe":"java");}
+    static Path installedFile(String name)throws Exception {
+        Path jar=Path.of(LauncherUpdate.class.getProtectionDomain().getCodeSource().getLocation().toURI());
+        return Files.isRegularFile(jar)?jar.resolveSibling(name):jar.resolve(name);
+    }
+    static void downloadFile(JsonObject file,Path base,Path temp,Consumer<String> progress)throws Exception {
+        if(Pack.matches(base,file)){Files.copy(base,temp,StandardCopyOption.REPLACE_EXISTING);return;}
+        if(Files.isRegularFile(base) && file.has("patches")){
+            String baseHash=Pack.hash(base,"SHA-256");
+            for(var element:file.getAsJsonArray("patches")){
+                var patch=element.getAsJsonObject();
+                if(!"aeromon-copy-add-v1".equals(patch.get("format").getAsString()) || !baseHash.equals(patch.get("baseSha256").getAsString()))continue;
+                Path delta=temp.resolveSibling(temp.getFileName()+".delta");
+                try{
+                    progress.accept("Downloading launcher patch for "+file.get("path").getAsString());
+                    Net.download(patch.get("url").getAsString(),delta);
+                    if(!Pack.matches(delta,patch))throw new SecurityException("Delta checksum mismatch");
+                    DeltaPatch.apply(base,delta,temp,file.get("size").getAsLong());
+                    if(!Pack.matches(temp,file))throw new SecurityException("Patched launcher checksum mismatch");
+                    return;
+                }catch(Exception failure){Files.deleteIfExists(temp);progress.accept("Patch unavailable; downloading verified full launcher file");}
+                finally{Files.deleteIfExists(delta);}
+                break;
+            }
+        }
+        Net.download(file.get("url").getAsString(),temp);
+        if(!Pack.matches(temp,file))throw new SecurityException("Launcher download checksum mismatch");
+    }
     static Pack.Release verified(Path directory)throws Exception {
         var pointer=JsonParser.parseString(Files.readString(directory.resolve("channel.json"))).getAsJsonObject();
         var release=Pack.verify(Files.readAllBytes(directory.resolve("manifest.json")),pointer,Pack.KEY);
@@ -35,7 +62,7 @@ final class LauncherUpdate {
         var pointer=JsonParser.parseString(new String(response.body(),StandardCharsets.UTF_8)).getAsJsonObject();String version=pointer.get("version").getAsString();if(!version.matches("[0-9]+\\.[0-9]+\\.[0-9]+"))throw new SecurityException("Invalid launcher release version");if(!newer(version,VERSION))return false;
         byte[] raw=Net.bytes(pointer.get("manifestUrl").getAsString());var release=Pack.verify(raw,pointer,Pack.KEY);Path directory=home.resolve("launcher/updates/"+version);Files.createDirectories(directory);
         progress.accept("Downloading Aeromon launcher "+version);
-        for(var element:release.manifest().getAsJsonArray("files")){var file=element.getAsJsonObject();String name=file.get("path").getAsString();if(!Set.of("aeromon-launcher.jar","gson.jar").contains(name))throw new SecurityException("Unsupported launcher update file");Path target=directory.resolve(name);if(!Pack.matches(target,file)){Path temp=directory.resolve(name+".part");Net.download(file.get("url").getAsString(),temp);if(!Pack.matches(temp,file))throw new SecurityException("Launcher download checksum mismatch");Files.move(temp,target,StandardCopyOption.REPLACE_EXISTING);}}
+        for(var element:release.manifest().getAsJsonArray("files")){var file=element.getAsJsonObject();String name=file.get("path").getAsString();if(!Set.of("aeromon-launcher.jar","gson.jar").contains(name))throw new SecurityException("Unsupported launcher update file");Path target=directory.resolve(name);if(!Pack.matches(target,file)){Path temp=directory.resolve(name+".part");downloadFile(file,installedFile(name),temp,progress);Files.move(temp,target,StandardCopyOption.REPLACE_EXISTING);}}
         Files.write(directory.resolve("manifest.json"),raw);Files.write(directory.resolve("channel.json"),response.body());verified(directory);
         // The replacement starts only after this process exits. No running executable is overwritten.
         new ProcessBuilder(java().toString(),"-jar",directory.resolve("aeromon-launcher.jar").toString(),"--activate-update",Long.toString(ProcessHandle.current().pid()),"--home",home.toString(),"--update-version",version).start();return true;
