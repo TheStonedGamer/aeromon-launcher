@@ -3,6 +3,7 @@ on:
   workflow_dispatch:
   push:
     branches: [main, launcher-implementation]
+    tags: ['v*']
   pull_request:
 jobs:
   package:
@@ -13,14 +14,28 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+      - name: Set package version
+        shell: bash
+        run: |
+          version=1.0.0
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then version="${GITHUB_REF_NAME#v}"; fi
+          echo "AEROMON_VERSION=$version" >> "$GITHUB_ENV"
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '21'
+      - name: Install WiX Toolset
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          choco install wixtoolset --yes --no-progress
+          $toolset = Get-ChildItem "${env:ProgramFiles(x86)}\WiX Toolset v3.*" -Directory | Sort-Object Name -Descending | Select-Object -First 1
+          if (-not $toolset -or -not (Test-Path (Join-Path $toolset.FullName 'bin\candle.exe'))) { throw 'WiX v3 compiler was not installed' }
+          (Join-Path $toolset.FullName 'bin') | Out-File -Append -Encoding utf8 $env:GITHUB_PATH
       - name: Build Windows wrapper
         if: runner.os == 'Windows'
         shell: pwsh
-        run: ./build.ps1 -Package
+        run: ./build.ps1 -Package -Installer -Version $env:AEROMON_VERSION
       - name: Build macOS or Linux wrapper
         if: runner.os != 'Windows'
         run: bash build.sh --package
@@ -39,7 +54,7 @@ jobs:
           system = os.environ['RUNNER_OS']
           arch = os.environ['RUNNER_ARCH'].lower()
           suffix = {'Windows':'windows','Linux':'linux','macOS':'macos'}[system]
-          name = f'Aeromon-1.0.0-{suffix}-{arch}'
+          name = f'Aeromon-{os.environ["AEROMON_VERSION"]}-{suffix}-{arch}'
           if system == 'Windows':
               shutil.make_archive(f'build/releases/{name}', 'zip', 'build/packages')
           else:
@@ -47,7 +62,36 @@ jobs:
                   for path in pathlib.Path('build/packages').iterdir():
                       archive.add(path, arcname=path.name)
           PY
+      - name: Build native installer
+        if: runner.os != 'Windows'
+        run: |
+          if [[ "$RUNNER_OS" == "macOS" ]]; then
+            jpackage --type dmg --name Aeromon --app-version "$AEROMON_VERSION" --vendor Aeromon --input build/dist --main-jar aeromon-launcher.jar --main-class cc.aeromon.launcher.Main --dest build/releases --runtime-image build/runtime --icon src/main/resources/branding/icon.icns --java-options '-Xmx512m'
+          else
+            jpackage --type deb --name aeromon --app-version "$AEROMON_VERSION" --vendor Aeromon --input build/dist --main-jar aeromon-launcher.jar --main-class cc.aeromon.launcher.Main --dest build/releases --runtime-image build/runtime --icon src/main/resources/branding/icon.png --java-options '-Xmx512m'
+          fi
+      - name: Include Windows installer
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: Copy-Item build/installers/*.msi build/releases/
       - uses: actions/upload-artifact@v4
         with:
           name: Aeromon-${{ matrix.os }}
           path: build/releases/
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: package
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: Aeromon-*
+          path: release-assets
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: release-assets/**
+          draft: true
+          prerelease: true
