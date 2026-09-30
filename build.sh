@@ -10,11 +10,11 @@ test "$actual" = "$expected"
 find src/main/java -name '*.java' > build/sources.txt
 javac -encoding UTF-8 --release 21 -cp build/deps/gson.jar -d build/classes @build/sources.txt
 cp build/deps/gson.jar build/dist/
-printf 'Class-Path: gson.jar\n' > build/MANIFEST.MF
+printf 'Class-Path: gson.jar\nImplementation-Version: 1.0.0\n' > build/MANIFEST.MF
 jar --create --file build/dist/aeromon-launcher.jar --main-class cc.aeromon.launcher.Main --manifest build/MANIFEST.MF -C build/classes . -C src/main/resources .
 if [[ ${1:-} == --package ]]; then
  jlink --add-modules ALL-MODULE-PATH --output build/runtime --no-header-files --no-man-pages --compress=2
  icon=src/main/resources/branding/icon.png
  if [[ $(uname) == Darwin ]]; then icon=src/main/resources/branding/icon.icns; fi
- jpackage --type app-image --name Aeromon --app-version 0.1.0 --vendor Aeromon --description 'Aeromon community modpack launcher' --icon "$icon" --input build/dist --main-jar aeromon-launcher.jar --main-class cc.aeromon.launcher.Main --dest build/packages --runtime-image build/runtime --java-options -Xmx512m
+ jpackage --type app-image --name Aeromon --app-version 1.0.0 --vendor Aeromon --description 'Aeromon community modpack launcher' --icon "$icon" --input build/dist --main-jar aeromon-launcher.jar --main-class cc.aeromon.launcher.Main --dest build/packages --runtime-image build/runtime --java-options -Xmx512m
 fi

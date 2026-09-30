@@ -14,7 +14,7 @@ final class WindowFrame extends JPanel {
     boolean maximized;
     WindowFrame(Main app,LauncherView view)throws Exception {
         window=app.window;window.setUndecorated(true);
-        setLayout(new BorderLayout());setBackground(LauncherView.BG);setBorder(new EmptyBorder(1,1,1,1));
+        setLayout(new BorderLayout());setBackground(LauncherView.BG);setBorder(new EmptyBorder(38,32,32,32));
         JPanel header=new JPanel(new BorderLayout());header.setBackground(new Color(15,24,35));header.setPreferredSize(new Dimension(100,42));header.setBorder(new EmptyBorder(0,16,0,10));
         JLabel name=LauncherView.text("AEROMON LAUNCHER",11,LauncherView.MUTED,true);name.setIcon(LauncherView.icon("icon.png",24,24));name.setIconTextGap(9);header.add(name,BorderLayout.WEST);
         JPanel controls=new JPanel(new FlowLayout(FlowLayout.RIGHT,1,2));controls.setOpaque(false);JButton minimize=control("−","Minimize"),maximize=control("□","Maximize or restore"),close=control("×","Close launcher");
@@ -35,7 +35,7 @@ final class WindowFrame extends JPanel {
         if(!maximized){restoreBounds=window.getBounds();Rectangle screen=window.getGraphicsConfiguration().getBounds();Insets insets=Toolkit.getDefaultToolkit().getScreenInsets(window.getGraphicsConfiguration());maximized=true;window.setShape(null);window.setBounds(screen.x+insets.left,screen.y+insets.top,screen.width-insets.left-insets.right,screen.height-insets.top-insets.bottom);}
         else{maximized=false;window.setBounds(restoreBounds);shape();}
     }
-    static Shape outline(int w,int h){double cut=22;Path2D path=new Path2D.Double();path.moveTo(cut,0);path.lineTo(w-cut,0);path.lineTo(w,cut);path.lineTo(w,h-cut);path.lineTo(w-cut,h);path.lineTo(cut,h);path.lineTo(0,h-cut);path.lineTo(0,cut);path.closePath();return path;}
+    static Shape outline(int w,int h){Path2D p=new Path2D.Double();p.moveTo(70,28);p.curveTo(w*.28,-8,w*.72,-8,w-70,28);p.curveTo(w-12,40,w,75,w,h*.35);p.lineTo(w-12,h-55);p.quadTo(w-24,h-24,w-75,h-24);p.lineTo(w*.65,h-24);p.lineTo(w*.62,h);p.lineTo(w*.38,h);p.lineTo(w*.35,h-24);p.lineTo(75,h-24);p.quadTo(24,h-24,12,h-55);p.lineTo(12,h*.4);p.lineTo(0,75);p.lineTo(40,85);p.quadTo(30,38,70,28);p.closePath();return p;}
     void shape(){if(!maximized&&window.getGraphicsConfiguration().getDevice().isWindowTranslucencySupported(GraphicsDevice.WindowTranslucency.PERPIXEL_TRANSPARENT))window.setShape(outline(window.getWidth(),window.getHeight()));repaint();}
     protected void paintChildren(Graphics graphics){super.paintChildren(graphics);Graphics2D g=(Graphics2D)graphics.create();g.setRenderingHint(RenderingHints.KEY_ANTIALIASING,RenderingHints.VALUE_ANTIALIAS_ON);g.setColor(new Color(65,90,106));g.draw(maximized?new Rectangle(0,0,getWidth()-1,getHeight()-1):outline(getWidth()-1,getHeight()-1));g.dispose();}
 }

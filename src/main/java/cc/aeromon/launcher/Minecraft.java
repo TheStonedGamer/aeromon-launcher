@@ -53,7 +53,7 @@ final class Minecraft {
         }finally{server.stop(0);}
     }
     static byte[] random(int count){byte[] bytes=new byte[count];new SecureRandom().nextBytes(bytes);return bytes;}
-    Path java(){return Path.of(System.getProperty("java.home"),"bin",os().equals("windows")?"java.exe":"java");}
+    Path java()throws Exception{return JavaRuntime.ensure(home,progress);}
     static String os(){String value=System.getProperty("os.name").toLowerCase();return value.contains("win")?"windows":value.contains("mac")?"osx":"linux";}
     void artifact(JsonObject download,Path target)throws Exception {
         String hash=download.has("sha1")?download.get("sha1").getAsString():null;
@@ -109,11 +109,18 @@ final class Minecraft {
         args.replaceAll(s->{for(var e:variables.entrySet())s=s.replace("${"+e.getKey()+"}",e.getValue());if(s.contains("${"))throw new IllegalArgumentException("Unknown Minecraft argument: "+s);return s;});return args;
     }
     Process launch(JsonObject pack,Session session,int memory)throws Exception {
+        return launch(pack,session,memory,false);
+    }
+    Process launchOffline(JsonObject pack,int memory)throws Exception {
+        String name="AeromonTest";String uuid=UUID.nameUUIDFromBytes(("OfflinePlayer:"+name).getBytes(StandardCharsets.UTF_8)).toString().replace("-","");
+        return launch(pack,new Session(name,uuid,"0"),memory,true);
+    }
+    Process launch(JsonObject pack,Session session,int memory,boolean offline)throws Exception {
         prepare(pack);String mc=pack.get("minecraft").getAsString(),neo=pack.get("neoforge").getAsString();var base=JsonParser.parseString(Files.readString(root.resolve("versions/"+mc+"/"+mc+".json"))).getAsJsonObject();var mod=JsonParser.parseString(Files.readString(root.resolve("versions/neoforge-"+neo+"/neoforge-"+neo+".json"))).getAsJsonObject();
         Map<String,Path> libraries=new LinkedHashMap<>();for(var version:List.of(base,mod))for(var e:version.getAsJsonArray("libraries")){var lib=e.getAsJsonObject();if(!allowed(lib))continue;String name=lib.get("name").getAsString();Path path=lib.has("downloads")&&lib.getAsJsonObject("downloads").has("artifact")?root.resolve("libraries/"+lib.getAsJsonObject("downloads").getAsJsonObject("artifact").get("path").getAsString()):libPath(name);if(Files.exists(path))libraries.put(name.split(":")[0]+":"+name.split(":")[1],path);}
         libraries.put("minecraft",root.resolve("versions/"+mc+"/"+mc+".jar"));String cp=String.join(File.pathSeparator,libraries.values().stream().map(Path::toString).toList());
         Map<String,String> vars=new HashMap<>();vars.put("auth_player_name",session.name());vars.put("auth_uuid",session.uuid());vars.put("auth_access_token",session.token());vars.put("auth_xuid","");vars.put("clientid","");vars.put("user_type","msa");vars.put("version_name","neoforge-"+neo);vars.put("version_type","release");vars.put("game_directory",home.resolve("instance").toString());vars.put("assets_root",root.resolve("assets").toString());vars.put("assets_index_name",base.getAsJsonObject("assetIndex").get("id").getAsString());vars.put("natives_directory",root.resolve("natives").toString());vars.put("launcher_name","Aeromon");vars.put("launcher_version","0.1.0");vars.put("classpath",cp);vars.put("library_directory",root.resolve("libraries").toString());vars.put("classpath_separator",File.pathSeparator);
-        var args=new ArrayList<String>();args.add(java().toString());args.add("-Xmx"+memory+"M");args.addAll(arguments(base,"jvm",vars));args.addAll(arguments(mod,"jvm",vars));if(os().equals("osx"))args.add("-XstartOnFirstThread");args.add(mod.get("mainClass").getAsString());args.addAll(arguments(base,"game",vars));args.addAll(arguments(mod,"game",vars));args.add("--quickPlayMultiplayer");args.add("mc.aeromon.cc");
+        var args=new ArrayList<String>();args.add(java().toString());args.add("-Xmx"+memory+"M");args.addAll(arguments(base,"jvm",vars));args.addAll(arguments(mod,"jvm",vars));if(os().equals("osx"))args.add("-XstartOnFirstThread");args.add(mod.get("mainClass").getAsString());args.addAll(arguments(base,"game",vars));args.addAll(arguments(mod,"game",vars));if(offline){args.add("--disableMultiplayer");args.add("--disableChat");}else{args.add("--quickPlayMultiplayer");args.add("mc.aeromon.cc");}
         Files.createDirectories(root.resolve("natives"));Path log=home.resolve("launcher/game.log");progress.accept("Launching Aeromon…");var process=new ProcessBuilder(args).directory(home.resolve("instance").toFile()).redirectErrorStream(true).redirectOutput(log.toFile()).start();
         Path pid=home.resolve("launcher/game.pid");Files.writeString(pid,Long.toString(process.pid()));process.onExit().thenRun(()->{try{Files.deleteIfExists(pid);}catch(IOException ignored){}});return process;
     }
