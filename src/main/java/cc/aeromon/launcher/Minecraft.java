@@ -117,6 +117,16 @@ final class Minecraft {
         }}throw new IOException("Minecraft version unavailable");
     }
     void prepare(JsonObject pack)throws Exception { prepare(pack,root); }
+    static boolean neoForgeInstalled(Path metadataFile,Path readyMarker,String version) {
+        if(!Files.isRegularFile(metadataFile)||!Files.isRegularFile(readyMarker))return false;
+        try {
+            JsonObject metadata=JsonParser.parseString(Files.readString(metadataFile)).getAsJsonObject();
+            return metadata.has("id")&&metadata.get("id").getAsString().equals("neoforge-"+version)
+                &&metadata.has("mainClass")&&!metadata.get("mainClass").getAsString().isBlank()
+                &&metadata.has("libraries")&&!metadata.getAsJsonArray("libraries").isEmpty()
+                &&Files.readString(readyMarker).trim().equals(version);
+        } catch(Exception ignored) { return false; }
+    }
     void prepare(JsonObject pack,Path runtimeRoot)throws Exception {
         String minecraft=pack.get("minecraft").getAsString(),neo=pack.get("neoforge").getAsString();if(!minecraft.matches("[0-9.]+")||!neo.matches("[0-9.]+"))throw new IOException("Unsupported runtime version");
         Files.createDirectories(runtimeRoot);var base=vanilla(minecraft,runtimeRoot);artifact(base.getAsJsonObject("downloads").getAsJsonObject("client"),runtimeRoot.resolve("versions/"+minecraft+"/"+minecraft+".jar"));
@@ -125,8 +135,7 @@ final class Minecraft {
         for(var entry:objects.entrySet()){var object=entry.getValue().getAsJsonObject();String hash=object.get("hash").getAsString();var download=new JsonObject();download.addProperty("url","https://resources.download.minecraft.net/"+hash.substring(0,2)+"/"+hash);download.addProperty("sha1",hash);artifact(download,runtimeRoot.resolve("assets/objects/"+hash.substring(0,2)+"/"+hash));if(++count%100==0)progress.accept("Minecraft assets · "+count+" / "+objects.size());}
         Path neoJson=runtimeRoot.resolve("versions/neoforge-"+neo+"/neoforge-"+neo+".json");
         Path ready=home.resolve("launcher/neoforge-"+neo+"-"+Integer.toHexString(runtimeRoot.toString().hashCode())+".ready");
-        boolean neoInstalled=false;
-        if(Files.isRegularFile(neoJson))try{JsonObject metadata=JsonParser.parseString(Files.readString(neoJson)).getAsJsonObject();neoInstalled=metadata.has("mainClass")&&metadata.has("libraries")&&Files.isRegularFile(runtimeRoot.resolve("versions/neoforge-"+neo+"/neoforge-"+neo+".jar"));}catch(Exception ignored){}
+        boolean neoInstalled=neoForgeInstalled(neoJson,ready,neo);
         if(!neoInstalled){
             String url="https://maven.neoforged.net/releases/net/neoforged/neoforge/"+neo+"/neoforge-"+neo+"-installer.jar";Path installer=home.resolve("launcher/neoforge-installer.jar");var download=new JsonObject();download.addProperty("url",url);download.addProperty("sha1",new String(Net.bytes(url+".sha1"),StandardCharsets.US_ASCII).trim());artifact(download,installer);
             // NeoForge's client installer requires a launcher profile marker in the isolated runtime root.

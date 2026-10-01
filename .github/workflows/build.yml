@@ -47,6 +47,8 @@ jobs:
           java -cp "build/tests${{ runner.os == 'Windows' && ';' || ':' }}build/dist/*" cc.aeromon.launcher.UpdaterTest
           javac -encoding UTF-8 --release 21 -cp "build/dist/aeromon-launcher.jar${{ runner.os == 'Windows' && ';' || ':' }}build/dist/gson.jar" -d build/tests src/test/java/cc/aeromon/launcher/PlayerDataPreservationTest.java
           java -cp "build/tests${{ runner.os == 'Windows' && ';' || ':' }}build/dist/*" cc.aeromon.launcher.PlayerDataPreservationTest
+          javac -encoding UTF-8 --release 21 -cp "build/dist/aeromon-launcher.jar${{ runner.os == 'Windows' && ';' || ':' }}build/dist/gson.jar" -d build/tests src/test/java/cc/aeromon/launcher/NeoForgeInstallDetectionTest.java
+          java -cp "build/tests${{ runner.os == 'Windows' && ';' || ':' }}build/dist/*" cc.aeromon.launcher.NeoForgeInstallDetectionTest
           javac -encoding UTF-8 --release 21 -cp "build/dist/aeromon-launcher.jar${{ runner.os == 'Windows' && ';' || ':' }}build/dist/gson.jar" -d build/tests src/test/java/cc/aeromon/launcher/DeltaUpdateTest.java
           java -cp "build/tests${{ runner.os == 'Windows' && ';' || ':' }}build/dist/*" cc.aeromon.launcher.DeltaUpdateTest
       - name: Archive native package with executable permissions
