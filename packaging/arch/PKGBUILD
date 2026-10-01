@@ -1,0 +1,21 @@
+# Aeromon's published x86_64 launcher, including its Java runtime.
+pkgname=aeromon-launcher-bin
+pkgver=1.0.4
+pkgrel=1
+pkgdesc='Aeromon Pixelmon launcher with managed pack and signed application updates'
+arch=('x86_64')
+url='https://aeromon.cc'
+depends=('glibc' 'gcc-libs' 'zlib' 'freetype2' 'fontconfig' 'libx11' 'libxext' 'libxi' 'libxrender' 'libxtst' 'alsa-lib' 'xdg-utils')
+provides=('aeromon-launcher')
+conflicts=('aeromon-launcher')
+options=('!strip' '!debug')
+source=("https://aeromon.cc/downloads/Aeromon-${pkgver}-linux-x64.tar.gz" 'aeromon.desktop')
+sha256sums=('2dc08f252918d9f5a06035c42da68e23aa4736607640db16e3b4028667978013' 'f2fb76c0d39131c87cf0f88c29ff04d9bd13ffa49756642015718f380c0823a8')
+
+package() {
+  install -d "$pkgdir/opt" "$pkgdir/usr/bin"
+  cp -a "$srcdir/aeromon" "$pkgdir/opt/aeromon"
+  ln -s /opt/aeromon/bin/aeromon "$pkgdir/usr/bin/aeromon"
+  install -Dm644 "$srcdir/aeromon.desktop" "$pkgdir/usr/share/applications/aeromon.desktop"
+  install -Dm644 "$srcdir/aeromon/lib/aeromon.png" "$pkgdir/usr/share/icons/hicolor/128x128/apps/aeromon.png"
+}
