@@ -6,6 +6,8 @@ At startup the launcher checks `https://aeromon.cc/updates/launcher-channel.json
 
 Updates reuse unchanged local files. For changed JARs, signed manifests may advertise `aeromon-copy-add-v1` patches keyed by the exact base SHA256. The patch reuses identical compressed ZIP payloads and supplies changed bytes in a gzip copy/add stream. The client verifies the base match, patch size/hash, bounded reconstruction, final size/hash and embedded application version. A missing, corrupt or incompatible patch falls back to the signed full download. No installed native executable is overwritten. Only launcher JARs use these binary patches; pack updates already download only changed manifest files.
 
+Pack updates reserve player-owned paths: saves, screenshots, logs, JourneyMap data and configuration, Xaero/VoxelMap data, resource packs, shader packs, schematics, player options/server lists, and selected client-mod preferences. These paths are excluded from installation, stale-file cleanup, rollback recovery, and official-launcher synchronization, including cleanup based on older ownership records. `options.txt` and `servers.dat` may be seeded when absent; existing files are preserved.
+
 Downloads go to user storage under `launcher/updates/VERSION`. A separate process waits for the launcher to exit, atomically selects the new release, and restarts it. The original native wrapper verifies and opens the selected updated JAR on subsequent starts. Previous releases remain on disk. The wrapper itself and its bundled bootstrap runtime are not replaced by this JAR update mechanism.
 
 ## Publishing

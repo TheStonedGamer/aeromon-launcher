@@ -23,22 +23,24 @@ public final class Main {
     final JButton offline=new JButton("LAUNCH OFFLINE");
     final JButton official=new JButton("OPEN OFFICIAL LAUNCHER");
     final JProgressBar progress=new JProgressBar();
-    final JComboBox<String> channel=new JComboBox<>(new String[]{"stable","beta"});
-    final Pack pack;
+    final JComboBox<String> channel=new JComboBox<>(new String[]{"stable","beta","test"});
+    Pack pack;
+    final Path baseHome;
     LoadingSplash splash;
     Pack.Release release;
     Minecraft.Session session;
     Process game;
     Main(Path home)throws Exception {
+        baseHome=home;
         pack=new Pack(home);
         window.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
         window.setMinimumSize(new Dimension(1060,770));window.setSize(1220,860);window.setLocationRelativeTo(null);
         window.setContentPane(new WindowFrame(this,new LauncherView(this)));
         channel.addActionListener(e->refresh());
         signIn.addActionListener(e->run(()->{
-            if(session!=null){CredentialStore.clear(pack.home);session=null;ui(()->{account.setText("Not signed in");signIn.setText("Sign in with Microsoft");});return;}
+            if(session!=null){CredentialStore.clear(baseHome);session=null;ui(()->{account.setText("Not signed in");signIn.setText("Sign in with Microsoft");});return;}
             session=Minecraft.login(clientId(),this::message);
-            CredentialStore.save(pack.home,session.refreshToken());
+            CredentialStore.save(baseHome,session.refreshToken());
             ui(()->{account.setText(session.name());signIn.setText("Sign out");});
         }));
         install.setEnabled(false);repair.setEnabled(false);play.setEnabled(false);
@@ -53,8 +55,9 @@ public final class Main {
         play.addActionListener(e->run(()->{
             if(session==null)throw new Exception("Sign in with Microsoft first");
             pack.install(release,this::message);
-            game=new Minecraft(pack.home,this::message).launch(release.manifest(),session,memory());
-            message("Minecraft running - welcome to Aeromon");
+            String host=selectedServerHost();
+            game=new Minecraft(pack.home,this::message).launch(release.manifest(),session,memory(),host);
+            message("Minecraft running - connected to "+host);
             game.onExit().thenRun(()->ui(()->{play.setEnabled(true);status.setText("Minecraft closed");}));
         }));
         window.addWindowListener(new java.awt.event.WindowAdapter(){public void windowClosed(java.awt.event.WindowEvent e){worker.shutdown();}});
@@ -87,16 +90,22 @@ public final class Main {
         message(detail);String dialog=detail+(log==null?"":"\n\nDiagnostic log: "+log);
         ui(()->JOptionPane.showMessageDialog(window,dialog,"Aeromon needs attention",JOptionPane.ERROR_MESSAGE));
     }
-    void run(Task task){ui(()->{progress.setVisible(true);progress.setIndeterminate(true);install.setEnabled(false);repair.setEnabled(false);play.setEnabled(false);official.setEnabled(false);offline.setEnabled(false);signIn.setEnabled(false);channel.setEnabled(false);});worker.submit(()->{try{task.run();}catch(Exception e){reportFailure(e);}finally{ui(()->{progress.setVisible(false);if(splash!=null)splash.finish();channel.setEnabled(true);signIn.setEnabled(true);official.setEnabled(true);install.setEnabled(release!=null && (game==null || !game.isAlive()));repair.setEnabled(install.isEnabled());offline.setEnabled(install.isEnabled());play.setEnabled(release!=null && session!=null && (game==null || !game.isAlive()));});}});}
+    void run(Task task){ui(()->{progress.setVisible(true);progress.setIndeterminate(true);install.setEnabled(false);repair.setEnabled(false);play.setEnabled(false);official.setEnabled(false);offline.setEnabled(false);signIn.setEnabled(false);channel.setEnabled(false);});worker.submit(()->{try{task.run();}catch(Exception e){reportFailure(e);}finally{ui(()->{progress.setVisible(false);if(splash!=null)splash.finish();channel.setEnabled(game==null || !game.isAlive());signIn.setEnabled(true);official.setEnabled(true);install.setEnabled(release!=null && (game==null || !game.isAlive()));repair.setEnabled(install.isEnabled());offline.setEnabled(install.isEnabled());play.setEnabled(release!=null && session!=null && (game==null || !game.isAlive()));});}});}
     void refresh(){run(this::refreshRelease);}
+    String selectedServerHost(){return "test".equals(channel.getSelectedItem())?"test.aeromon.cc":"mc.aeromon.cc";}
     void restoreSession(){
-        try{session=Minecraft.restore(pack.home,clientId(),this::message);if(session!=null){CredentialStore.save(pack.home,session.refreshToken());ui(()->{account.setText(session.name());signIn.setText("Sign out");});}}
-        catch(Exception failure){try{CredentialStore.clear(pack.home);}catch(Exception ignored){}session=null;message("Saved Microsoft sign-in expired. Sign in again to continue.");}
+        try{session=Minecraft.restore(baseHome,clientId(),this::message);if(session!=null){CredentialStore.save(baseHome,session.refreshToken());ui(()->{account.setText(session.name());signIn.setText("Sign out");});}}
+        catch(Exception failure){session=null;LauncherErrors.record(baseHome,failure);message("Could not restore saved sign-in: "+LauncherErrors.describe(failure)+" Your saved login is retained; restart to retry or sign in again.");}
     }
-    void refreshRelease()throws Exception{release=pack.latest((String)channel.getSelectedItem());String installed=pack.installed();ui(()->{
+    void refreshRelease()throws Exception{
+        if(game!=null && game.isAlive())throw new java.io.IOException("Close Minecraft before changing packs");
+        release=null;
+        String selected=(String)channel.getSelectedItem();
+        pack=new Pack("test".equals(selected)?baseHome.resolve("test"):baseHome);
+        release=pack.latest(selected);String installed=pack.installed();ui(()->{
         version.setText("AEROMON "+release.version()+"  /  MINECRAFT "+release.manifest().get("minecraft").getAsString()+"  /  NEOFORGE "+release.manifest().get("neoforge").getAsString());
         String releaseNotes=release.manifest().get("notes").getAsString();notes.setText(releaseNotes.startsWith("Imported from")?"Pixelmon meets Create Aeronautics. Explore the Aeromon world with the current community pack.":releaseNotes);
-        install.setText(installed.equals(release.version())?"CHECK FOR UPDATES":"Not installed".equals(installed)?"INSTALL AEROMON":"UPDATE AEROMON");status.setText("Installed: "+installed+" · Available: "+release.version()+" · mc.aeromon.cc");
+        install.setText(installed.equals(release.version())?"CHECK FOR UPDATES":"Not installed".equals(installed)?"INSTALL AEROMON":"UPDATE AEROMON");status.setText("Installed: "+installed+" · Available: "+release.version()+" · "+selectedServerHost());
     });}
     void install(){splash.showLoading("Preparing your Aeromon pack");run(()->{pack.install(release,this::message);new Minecraft(pack.home,this::message).prepare(release.manifest());ui(()->{install.setText("CHECK FOR UPDATES");status.setText("Aeromon "+release.version()+" installed. Sign in to play.");});});}
     String clientId()throws Exception {String id=System.getProperty("aeromon.clientId",prefs().get("clientId", "6e76a2c9-5a48-41d6-9e6a-3aa2e60c36fa"));if(id.isBlank())throw new Exception("Microsoft application registration is pending. Enter Aeromon's public client ID in Settings.");return id;}
@@ -108,7 +117,7 @@ public final class Main {
         if(release==null)throw new java.io.IOException("Wait for the pack release to load");
         pack.install(release,message);
         Minecraft runtime=new Minecraft(pack.home,message);
-        Path root=officialLauncherRoot(runtime.root);
+        Path root=release.version().startsWith("test-")?runtime.root:officialLauncherRoot(runtime.root);
         Path gameDir=root.resolve("Aeromon").toAbsolutePath().normalize();
         runtime.prepare(release.manifest(),root);
         runtime.syncOfficialInstance(release,gameDir);
@@ -203,13 +212,15 @@ public final class Main {
     public static void main(String[] args)throws Exception {
         Path home=defaultHome();for(int i=0;i<args.length;i++)if(args[i].equals("--home"))home=Path.of(args[++i]);
         var options=java.util.Arrays.asList(args);
+        String requestedChannel=options.contains("--test")?"test":options.contains("--beta")?"beta":"stable";
+        if(options.contains("--test"))home=home.resolve("test");
         if(options.contains("--official-launcher")){var pack=new Pack(home);openOfficialLauncher(pack,pack.latest("stable"),8160,System.out::println);return;}
         if(options.contains("--official-offline-test")){var pack=new Pack(home);var release=pack.latest("stable");pack.install(release,System.out::println);var runtime=new Minecraft(home,System.out::println);Path root=officialLauncherRoot(runtime.root),gameDir=root.resolve("Aeromon");runtime.prepare(release.manifest(),root);runtime.syncOfficialInstance(release,gameDir);var profile=com.google.gson.JsonParser.parseString(Files.readString(root.resolve("launcher_profiles.json"))).getAsJsonObject();if(!"aeromon".equals(profile.get("selectedProfile").getAsString()))throw new java.io.IOException("Aeromon profile is not selected");var process=runtime.launch(release.manifest(),new Minecraft.Session("AeromonTest",java.util.UUID.nameUUIDFromBytes("OfflinePlayer:AeromonTest".getBytes(java.nio.charset.StandardCharsets.UTF_8)).toString().replace("-",""),"0",null),8160,true,root,gameDir);System.out.println("Offline Aeromon NeoForge process "+process.pid()+"; inspect "+gameDir.resolve("logs/latest.log"));return;}
-        if(options.contains("--offline-test")){var pack=new Pack(home);var release=pack.latest("stable");pack.install(release,System.out::println);var process=new Minecraft(home,System.out::println).launchOffline(release.manifest(),6144);System.out.println("Offline Minecraft PID "+process.pid());return;}
+        if(options.contains("--offline-test")){var pack=new Pack(home);var release=pack.latest(requestedChannel);pack.install(release,System.out::println);var process=new Minecraft(home,System.out::println).launchOffline(release.manifest(),6144);System.out.println("Offline Minecraft PID "+process.pid());return;}
         if(options.contains("--activate-update")){LauncherUpdate.activate(home,args[options.indexOf("--update-version")+1],Long.parseLong(args[options.indexOf("--activate-update")+1]));return;}
         if(java.util.Arrays.asList(args).contains("--login-test")){var session=Minecraft.login("6e76a2c9-5a48-41d6-9e6a-3aa2e60c36fa",System.out::println);System.out.println("Minecraft profile verified: "+session.name());return;}
         if(java.util.Arrays.asList(args).contains("--check")||java.util.Arrays.asList(args).contains("--install")||java.util.Arrays.asList(args).contains("--prepare")){
-            var pack=new Pack(home);var release=pack.latest(java.util.Arrays.asList(args).contains("--beta")?"beta":"stable");System.out.println("Verified release "+release.version()+" · "+release.manifest().getAsJsonArray("files").size()+" files");
+            var pack=new Pack(home);var release=pack.latest(requestedChannel);System.out.println("Verified release "+release.version()+" · "+release.manifest().getAsJsonArray("files").size()+" files");
             if(java.util.Arrays.asList(args).contains("--install"))pack.install(release,System.out::println);
             if(java.util.Arrays.asList(args).contains("--prepare"))new Minecraft(home,System.out::println).prepare(release.manifest());
             return;

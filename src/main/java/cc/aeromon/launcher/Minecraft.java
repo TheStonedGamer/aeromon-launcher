@@ -22,7 +22,15 @@ final class Minecraft {
     Minecraft(Path home,Consumer<String> progress){this.home=home;this.root=home.resolve("minecraft");this.progress=progress;}
     static String encode(String s){return URLEncoder.encode(s,StandardCharsets.UTF_8);}
     static JsonObject post(String url,String type,String body)throws Exception {
-        var response=Net.HTTP.send(Net.request(url).header("Content-Type",type).POST(HttpRequest.BodyPublishers.ofString(body)).build(),HttpResponse.BodyHandlers.ofString());
+        java.net.http.HttpResponse<String> response;
+        try {
+            response=Net.HTTP.send(Net.request(url).header("Content-Type",type).POST(HttpRequest.BodyPublishers.ofString(body)).build(),HttpResponse.BodyHandlers.ofString());
+        } catch(java.io.IOException failure) {
+            String host=URI.create(url).getHost();
+            boolean dns=false;
+            for(Throwable cause=failure;cause!=null;cause=cause.getCause())if(cause instanceof java.nio.channels.UnresolvedAddressException || cause instanceof java.net.UnknownHostException)dns=true;
+            throw new IOException(dns?"Sign-in could not resolve "+host+". Check your DNS connection, then retry sign-in.":"Sign-in could not connect to "+host+". Check your connection, then retry.",failure);
+        }
         if(response.statusCode()!=200)throw new IOException("Sign-in service rejected the request (HTTP "+response.statusCode()+", "+URI.create(url).getHost()+"): "+rejectionDetail(response.body()));
         return JsonParser.parseString(response.body()).getAsJsonObject();
     }
@@ -66,8 +74,10 @@ final class Minecraft {
             var profile=JsonParser.parseString(profileResponse.body()).getAsJsonObject();return new Session(profile.get("name").getAsString(),profile.get("id").getAsString(),token,ms.has("refresh_token")?ms.get("refresh_token").getAsString():null);
         }finally{server.stop(0);}
     }
-    static Session refresh(String clientId,String refreshToken,Consumer<String> progress)throws Exception {
+    static Session refresh(Path home,String clientId,String refreshToken,Consumer<String> progress)throws Exception {
         var ms=post("https://login.microsoftonline.com/consumers/oauth2/v2.0/token","application/x-www-form-urlencoded","client_id="+encode(clientId)+"&grant_type=refresh_token&refresh_token="+encode(refreshToken)+"&scope="+encode("XboxLive.signin offline_access"));
+        // Preserve the rotated Microsoft token even if a later Xbox/Minecraft request fails.
+        if(ms.has("refresh_token"))CredentialStore.save(home,ms.get("refresh_token").getAsString());
         var gson=new Gson();var props=new JsonObject();props.addProperty("AuthMethod","RPS");props.addProperty("SiteName","user.auth.xboxlive.com");props.addProperty("RpsTicket","d="+ms.get("access_token").getAsString());var body=new JsonObject();body.add("Properties",props);body.addProperty("RelyingParty","http://auth.xboxlive.com");body.addProperty("TokenType","JWT");
         var xbox=post("https://user.auth.xboxlive.com/user/authenticate","application/json",gson.toJson(body));
         props=new JsonObject();props.addProperty("SandboxId","RETAIL");var tokens=new JsonArray();tokens.add(xbox.get("Token"));props.add("UserTokens",tokens);body=new JsonObject();body.add("Properties",props);body.addProperty("RelyingParty","rp://api.minecraftservices.com/");body.addProperty("TokenType","JWT");
@@ -78,7 +88,7 @@ final class Minecraft {
         var profile=JsonParser.parseString(profileResponse.body()).getAsJsonObject();return new Session(profile.get("name").getAsString(),profile.get("id").getAsString(),token,ms.has("refresh_token")?ms.get("refresh_token").getAsString():refreshToken);
     }
     static Session restore(Path home,String clientId,Consumer<String> progress)throws Exception {
-        String token=CredentialStore.load(home);return token==null?null:refresh(clientId,token,progress);
+        String token=CredentialStore.load(home);return token==null?null:refresh(home,clientId,token,progress);
     }
     static byte[] random(int count){byte[] bytes=new byte[count];new SecureRandom().nextBytes(bytes);return bytes;}
     Path java()throws Exception{return JavaRuntime.ensure(home,progress);}
@@ -133,11 +143,13 @@ final class Minecraft {
         Path target=gameDir.toAbsolutePath().normalize();
         if(source.equals(target))return;
         Files.createDirectories(target);
+        Pack pack=new Pack(home);
         Set<String> desired=new HashSet<>();
         for(var element:release.manifest().getAsJsonArray("files")) {
             JsonObject file=element.getAsJsonObject();String name=file.get("path").getAsString();
-            if(name.equalsIgnoreCase("servers.dat")||name.equalsIgnoreCase("options.txt"))continue;
-            Path from=new Pack(home).safe(source,name),to=new Pack(home).safe(target,name);desired.add(name.toLowerCase(Locale.ROOT));
+            Path from=pack.resolveSafe(source,name),to=pack.resolveSafe(target,name);
+            if(Pack.isPlayerDataPath(name))continue;
+            desired.add(name.toLowerCase(Locale.ROOT));
             if(!Pack.matches(from,file))throw new IOException("Pack file is missing or changed: "+name+". Reinstall Aeromon and retry.");
             if(Pack.matches(to,file))continue;
             Files.createDirectories(to.getParent());Path temp=to.resolveSibling(to.getFileName()+".aeromon-part");Files.copy(from,temp,StandardCopyOption.REPLACE_EXISTING);Files.move(temp,to,StandardCopyOption.REPLACE_EXISTING);
@@ -154,8 +166,8 @@ final class Minecraft {
         // Remove only files recorded as Aeromon-owned by the previous official sync.
         Path state=home.resolve("launcher/official-files.json");
         if(Files.exists(state))for(JsonElement old:JsonParser.parseString(Files.readString(state)).getAsJsonArray()) {
-            String name=old.getAsString();if(desired.contains(name.toLowerCase(Locale.ROOT)))continue;
-            Path file=new Pack(home).safe(target,name);Files.deleteIfExists(file);
+            String name=old.getAsString();if(desired.contains(name.toLowerCase(Locale.ROOT))||Pack.isPlayerDataPath(name))continue;
+            Path file=pack.safe(target,name);Files.deleteIfExists(file);
         }
         JsonArray owned=new JsonArray();desired.forEach(owned::add);Pack.atomic(state,owned.toString().getBytes(StandardCharsets.UTF_8));
         for(String preference:List.of("servers.dat","options.txt")){
@@ -195,8 +207,8 @@ final class Minecraft {
             Nbt existing=root.get("servers");if(existing!=null&&existing.type()==9){Object[] list=(Object[])existing.value();@SuppressWarnings("unchecked")List<Nbt> values=(List<Nbt>)list[1];servers.addAll(values);}
             }
         } catch(IOException invalid){Path backup=file.resolveSibling("servers.dat.aeromon-backup");if(!Files.exists(backup))Files.copy(file,backup);root.clear();servers.clear();compressed=false;System.err.println("Existing Minecraft server list is malformed; preserved backup at "+backup+" and will create the Aeromon entry in the separate game directory.");}
-        for(Nbt server:servers){Map<String,Nbt> values=(Map<String,Nbt>)server.value();if(values.get("ip")!=null&&"mc.aeromon.cc".equals(values.get("ip").value())){if(!"Aeromon".equals(values.get("name").value())){values.put("name",new Nbt(8,"Aeromon"));modified=true;}if(values.get("acceptTextures")==null||values.get("acceptTextures").type()!=1||!Byte.valueOf((byte)1).equals(values.get("acceptTextures").value())){values.put("acceptTextures",new Nbt(1,(byte)1));modified=true;}if(modified)writeNbt(file,root,servers,compressed);return;}}
-        Map<String,Nbt> added=new LinkedHashMap<>();added.put("name",new Nbt(8,"Aeromon"));added.put("ip",new Nbt(8,"mc.aeromon.cc"));added.put("acceptTextures",new Nbt(1,(byte)1));servers.add(new Nbt(10,added));root.put("servers",new Nbt(9,new Object[]{10,servers}));writeNbt(file,root,servers,compressed);
+        for(String[] entry:new String[][]{{"Aeromon","mc.aeromon.cc"},{"Aeromon Test","test.aeromon.cc"}}){boolean found=false;for(Nbt server:servers){Map<String,Nbt> values=(Map<String,Nbt>)server.value();if(values.get("ip")!=null&&entry[1].equals(values.get("ip").value())){found=true;if(!entry[0].equals(values.get("name").value())){values.put("name",new Nbt(8,entry[0]));modified=true;}if(values.get("acceptTextures")==null||values.get("acceptTextures").type()!=1||!Byte.valueOf((byte)1).equals(values.get("acceptTextures").value())){values.put("acceptTextures",new Nbt(1,(byte)1));modified=true;}break;}}if(!found){Map<String,Nbt> added=new LinkedHashMap<>();added.put("name",new Nbt(8,entry[0]));added.put("ip",new Nbt(8,entry[1]));added.put("acceptTextures",new Nbt(1,(byte)1));servers.add(new Nbt(10,added));modified=true;}}
+        if(modified){root.put("servers",new Nbt(9,new Object[]{10,servers}));writeNbt(file,root,servers,compressed);}
     }
     private static void writeNbt(Path file,Map<String,Nbt> root,List<Nbt> servers,boolean compressed)throws Exception {
         root.put("servers",new Nbt(9,new Object[]{10,servers}));
@@ -238,7 +250,11 @@ final class Minecraft {
         args.replaceAll(s->{for(var e:variables.entrySet())s=s.replace("${"+e.getKey()+"}",e.getValue());if(s.contains("${"))throw new IllegalArgumentException("Unknown Minecraft argument: "+s);return s;});return args;
     }
     Process launch(JsonObject pack,Session session,int memory)throws Exception {
-        return launch(pack,session,memory,false);
+        return launch(pack,session,memory,"mc.aeromon.cc");
+    }
+    Process launch(JsonObject pack,Session session,int memory,String serverHost)throws Exception {
+        if(!Set.of("mc.aeromon.cc","test.aeromon.cc").contains(serverHost))throw new IOException("Unsupported Aeromon server target");
+        return launch(pack,session,memory,false,root,home.resolve("instance"),serverHost);
     }
     Process launchOffline(JsonObject pack,int memory)throws Exception {
         String name="AeromonTest";String uuid=UUID.nameUUIDFromBytes(("OfflinePlayer:"+name).getBytes(StandardCharsets.UTF_8)).toString().replace("-","");
@@ -248,12 +264,15 @@ final class Minecraft {
         return launch(pack,session,memory,offline,root,home.resolve("instance"));
     }
     Process launch(JsonObject pack,Session session,int memory,boolean offline,Path runtimeRoot,Path gameDir)throws Exception {
+        return launch(pack,session,memory,offline,runtimeRoot,gameDir,"mc.aeromon.cc");
+    }
+    Process launch(JsonObject pack,Session session,int memory,boolean offline,Path runtimeRoot,Path gameDir,String serverHost)throws Exception {
         prepare(pack,runtimeRoot);String mc=pack.get("minecraft").getAsString(),neo=pack.get("neoforge").getAsString();var base=JsonParser.parseString(Files.readString(runtimeRoot.resolve("versions/"+mc+"/"+mc+".json"))).getAsJsonObject();var mod=JsonParser.parseString(Files.readString(runtimeRoot.resolve("versions/neoforge-"+neo+"/neoforge-"+neo+".json"))).getAsJsonObject();
         Map<String,Path> libraries=new LinkedHashMap<>();for(var version:List.of(base,mod))for(var e:version.getAsJsonArray("libraries")){var lib=e.getAsJsonObject();if(!allowed(lib))continue;String name=lib.get("name").getAsString();Path path=lib.has("downloads")&&lib.getAsJsonObject("downloads").has("artifact")?runtimeRoot.resolve("libraries/"+lib.getAsJsonObject("downloads").getAsJsonObject("artifact").get("path").getAsString()):runtimeRoot.resolve("libraries/"+name.split(":")[0].replace('.','/')+"/"+name.split(":")[1]+"/"+name.split(":")[2]+"/"+name.split(":")[1]+"-"+name.split(":")[2]+(name.split(":").length>3?"-"+name.split(":")[3]:"")+".jar");if(Files.exists(path))libraries.put(name.split(":")[0]+":"+name.split(":")[1]+(name.split(":").length>3?":"+name.split(":")[3]:""),path);}
         String cp=String.join(File.pathSeparator,libraries.values().stream().map(Path::toString).toList());
         Map<String,String> vars=new HashMap<>();vars.put("auth_player_name",session.name());vars.put("auth_uuid",session.uuid());vars.put("auth_access_token",session.token());vars.put("auth_xuid","");vars.put("clientid","");vars.put("user_type","msa");vars.put("version_name","neoforge-"+neo);vars.put("version_type","release");vars.put("game_directory",gameDir.toString());vars.put("assets_root",runtimeRoot.resolve("assets").toString());vars.put("assets_index_name",base.getAsJsonObject("assetIndex").get("id").getAsString());vars.put("natives_directory",runtimeRoot.resolve("natives").toString());vars.put("launcher_name","Aeromon");vars.put("launcher_version","0.1.0");vars.put("classpath",cp);vars.put("library_directory",runtimeRoot.resolve("libraries").toString());vars.put("classpath_separator",File.pathSeparator);
-        var args=new ArrayList<String>();args.add(gameJava().toString());args.add("-Xmx"+memory+"M");args.addAll(arguments(base,"jvm",vars));args.addAll(arguments(mod,"jvm",vars));if(os().equals("osx"))args.add("-XstartOnFirstThread");args.add(mod.get("mainClass").getAsString());args.addAll(arguments(base,"game",vars));args.addAll(arguments(mod,"game",vars));if(offline){args.add("--disableMultiplayer");args.add("--disableChat");}else{mergeServerList(gameDir.resolve("servers.dat"));args.add("--quickPlayMultiplayer");args.add("mc.aeromon.cc");}
-        Files.createDirectories(runtimeRoot.resolve("natives"));Files.createDirectories(gameDir.resolve("logs"));Path log=gameDir.resolve("logs/latest.log");progress.accept("Launching Aeromon…");var process=new ProcessBuilder(args).directory(gameDir.toFile()).redirectErrorStream(true).redirectOutput(log.toFile()).start();
+        var args=new ArrayList<String>();args.add(gameJava().toString());args.add("-Xmx"+memory+"M");args.addAll(arguments(base,"jvm",vars));args.addAll(arguments(mod,"jvm",vars));if(os().equals("osx"))args.add("-XstartOnFirstThread");args.add(mod.get("mainClass").getAsString());args.addAll(arguments(base,"game",vars));args.addAll(arguments(mod,"game",vars));if(offline){args.add("--disableMultiplayer");args.add("--disableChat");}else{if(!Set.of("mc.aeromon.cc","test.aeromon.cc").contains(serverHost))throw new IOException("Unsupported Aeromon server target");mergeServerList(gameDir.resolve("servers.dat"));args.add("--quickPlayMultiplayer");args.add(serverHost);}
+        Files.createDirectories(runtimeRoot.resolve("natives"));Files.createDirectories(gameDir.resolve("logs"));Path log=gameDir.resolve("logs/launcher-console.log");progress.accept("Launching Aeromon…");var process=new ProcessBuilder(args).directory(gameDir.toFile()).redirectErrorStream(true).redirectOutput(log.toFile()).start();
         Path pid=home.resolve("launcher/game.pid");Files.writeString(pid,Long.toString(process.pid()));process.onExit().thenRun(()->{try{Files.deleteIfExists(pid);}catch(IOException ignored){}});return process;
     }
 }

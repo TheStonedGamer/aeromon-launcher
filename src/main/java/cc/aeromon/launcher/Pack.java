@@ -13,6 +13,20 @@ final class Pack {
     static final String FEED = "https://panel.aeromon.cc/feed";
     // Pinned from the deployed signing key. Never trust a key downloaded alongside the release.
     static final String KEY = "1015bf1ab708746279cdf9b5c6d0ad700365db1c8ff8da62d70276c7656bea4d";
+    private static final Set<String> PLAYER_DATA_ROOTS = Set.of(
+        "saves", "screenshots", "logs", "journeymap", "xaerowaypoints", "xaeroworldmap",
+        "xaerominimap", "xaero", "voxelmap", "resourcepacks", "shaderpacks",
+        "schematics", "distant_horizons_server_data", "launcher"
+    );
+    private static final Set<String> PLAYER_DATA_CONFIGS = Set.of(
+        "config/journeymap", "config/xaero", "config/xaerominimap", "config/xaeroworldmap",
+        "config/voxelmap", "config/axiom", "config/litematica", "config/jei"
+    );
+    private static final Set<String> PLAYER_DATA_FILES = Set.of(
+        "options.txt", "optionsshaders.txt", "optionsof.txt", "servers.dat", "servers.dat_old",
+        "launcher_profiles.json", "usercache.json"
+    );
+    private static final Set<String> SEEDABLE_PLAYER_FILES = Set.of("options.txt", "servers.dat");
     final Path home, instance, state;
     record Release(JsonObject manifest, byte[] raw, String signature) { String version(){return manifest.get("version").getAsString();} }
     Pack(Path home) throws IOException { this.home=home.toAbsolutePath().normalize(); instance=this.home.resolve("instance"); state=this.home.resolve("launcher"); Files.createDirectories(instance); Files.createDirectories(state); }
@@ -32,16 +46,28 @@ final class Pack {
         return new Release(manifest,raw,pointer.get("signature").getAsString());
     }
     Release latest(String channel) throws Exception {
-        if(!Set.of("stable","beta").contains(channel)) throw new IllegalArgumentException("Invalid channel");
+        if(!Set.of("stable","beta","test").contains(channel)) throw new IllegalArgumentException("Invalid channel");
         var pointer=Net.json(FEED+"/channels/"+channel+".json"); String version=pointer.get("version").getAsString();
         if(!version.matches("[A-Za-z0-9][A-Za-z0-9._-]{0,63}")) throw new SecurityException("Invalid version");
         return verify(Net.bytes(FEED+"/releases/"+version+"/manifest.json"),pointer,KEY);
     }
-    Path safe(Path root,String name) throws IOException {
+    static boolean isPlayerDataPath(String name) {
+        String normalized=name.toLowerCase(Locale.ROOT);
+        if(PLAYER_DATA_FILES.contains(normalized))return true;
+        String first=normalized.split("/",2)[0];
+        if(PLAYER_DATA_ROOTS.contains(first))return true;
+        for(String directory:PLAYER_DATA_CONFIGS)if(normalized.equals(directory)||normalized.startsWith(directory+"/"))return true;
+        return false;
+    }
+    Path resolveSafe(Path root,String name) throws IOException {
         if(name.isBlank() || name.contains("\\") || name.contains(":") || name.startsWith("/") || Arrays.asList(name.split("/")).contains("..")) throw new IOException("Unsafe pack path: "+name);
-        if(Set.of("saves","screenshots","logs","journeymap","launcher").contains(name.split("/")[0].toLowerCase(Locale.ROOT))) throw new IOException("Player data cannot be managed: "+name);
         Path path=root.resolve(name).normalize(); if(!path.startsWith(root) || path.equals(root)) throw new IOException("Unsafe pack path");
         for(Path current=path;current!=null && current.startsWith(root);current=current.getParent()) if(Files.isSymbolicLink(current)) throw new IOException("Symlink in pack path: "+name);
+        return path;
+    }
+    Path safe(Path root,String name) throws IOException {
+        Path path=resolveSafe(root,name);
+        if(isPlayerDataPath(name)&&!SEEDABLE_PLAYER_FILES.contains(name.toLowerCase(Locale.ROOT)))throw new IOException("Player data cannot be managed: "+name);
         return path;
     }
     static String expected(JsonObject file,String algo) {
@@ -66,14 +92,20 @@ final class Pack {
             recover();
             new CustomMods(this).checkPack(release);
             Path staging=state.resolve("staging");Files.createDirectories(staging);
-            Map<String,JsonObject> desired=new LinkedHashMap<>();
-            for(var element:release.manifest.getAsJsonArray("files")){var file=element.getAsJsonObject();String path=file.get("path").getAsString();safe(instance,path);if(desired.putIfAbsent(path.toLowerCase(Locale.ROOT),file)!=null)throw new IOException("Duplicate pack path");}
+            Map<String,JsonObject> desired=new LinkedHashMap<>();Set<String> manifestPaths=new HashSet<>();
+            for(var element:release.manifest.getAsJsonArray("files")){
+                var file=element.getAsJsonObject();String path=file.get("path").getAsString();String key=path.toLowerCase(Locale.ROOT);
+                Path target=resolveSafe(instance,path);if(!manifestPaths.add(key))throw new IOException("Duplicate pack path");
+                boolean firstInstallPreference=SEEDABLE_PLAYER_FILES.contains(key)&&!Files.exists(target);
+                if(isPlayerDataPath(path)&&!firstInstallPreference){progress.accept("Preserving player data "+path);continue;}
+                safe(instance,path);desired.put(key,file);
+            }
             List<JsonObject> changed=new ArrayList<>();int done=0;
             for(var file:desired.values()){
                 String name=file.get("path").getAsString();progress.accept("Checking "+(++done)+" / "+desired.size()+" · "+name);
                 Path target=safe(instance,name); if(matches(target,file))continue;
                 // Seed player preferences only on the first install.
-                if(Set.of("options.txt","servers.dat").contains(name) && Files.exists(target))continue;
+                if(isPlayerDataPath(name) && Files.exists(target))continue;
                 Path staged=safe(staging,name);
                 if(!matches(staged,file)){
                     String url=file.get("source").getAsString().equals("aeromon")?FEED+"/artifacts/"+file.get("sha256").getAsString():file.get("url").getAsString();
@@ -84,7 +116,7 @@ final class Pack {
             }
             List<String> paths=new ArrayList<>();for(var f:changed)paths.add(f.get("path").getAsString());
             Path installed=state.resolve("installed.json");
-            if(Files.exists(installed))for(var f:JsonParser.parseString(Files.readString(installed)).getAsJsonObject().getAsJsonArray("files")){String name=f.getAsJsonObject().get("path").getAsString();if(!desired.containsKey(name.toLowerCase(Locale.ROOT))&&!Set.of("options.txt","servers.dat").contains(name))paths.add(name);}
+            if(Files.exists(installed))for(var f:JsonParser.parseString(Files.readString(installed)).getAsJsonObject().getAsJsonArray("files")){String name=f.getAsJsonObject().get("path").getAsString();if(!desired.containsKey(name.toLowerCase(Locale.ROOT))&&!isPlayerDataPath(name))paths.add(name);}
             Path rollback=state.resolve("rollback-"+UUID.randomUUID());Files.createDirectories(rollback);
             JsonObject journal=new JsonObject();journal.addProperty("rollback",rollback.getFileName().toString());JsonArray entries=new JsonArray();
             for(String name:paths){Path target=safe(instance,name);JsonObject entry=new JsonObject();entry.addProperty("path",name);entry.addProperty("existed",Files.exists(target));entries.add(entry);if(Files.exists(target)){Path backup=safe(rollback,name);Files.createDirectories(backup.getParent());Files.copy(target,backup,StandardCopyOption.REPLACE_EXISTING);}}
@@ -100,7 +132,7 @@ final class Pack {
     void recover()throws Exception {
         Path journal=state.resolve("transaction.json");if(!Files.exists(journal))return;
         var data=JsonParser.parseString(Files.readString(journal)).getAsJsonObject();String folder=data.get("rollback").getAsString();if(!folder.matches("rollback-[a-f0-9-]+"))throw new IOException("Invalid recovery journal");
-        for(var e:data.getAsJsonArray("entries")){var entry=e.getAsJsonObject();String name=entry.get("path").getAsString();Path target=safe(instance,name);if(entry.get("existed").getAsBoolean()){Files.createDirectories(target.getParent());Files.copy(safe(state.resolve(folder),name),target,StandardCopyOption.REPLACE_EXISTING);}else Files.deleteIfExists(target);}
+        for(var e:data.getAsJsonArray("entries")){var entry=e.getAsJsonObject();String name=entry.get("path").getAsString();Path target=resolveSafe(instance,name);if(isPlayerDataPath(name))continue;if(entry.get("existed").getAsBoolean()){Files.createDirectories(target.getParent());Files.copy(safe(state.resolve(folder),name),target,StandardCopyOption.REPLACE_EXISTING);}else Files.deleteIfExists(target);}
         if(data.has("installedExisted")){if(data.get("installedExisted").getAsBoolean())atomic(state.resolve("installed.json"),Files.readAllBytes(state.resolve(folder).resolve("installed.previous")));else Files.deleteIfExists(state.resolve("installed.json"));}
         Files.delete(journal);
     }

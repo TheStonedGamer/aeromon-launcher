@@ -62,11 +62,13 @@ final class CredentialStore {
         Path file = windowsFile(home);
         Files.createDirectories(file.getParent());
         byte[] protectedToken = protect(token);
-        Path staged = file.resolveSibling(file.getFileName() + ".part");
-        Files.writeString(staged, Base64.getEncoder().encodeToString(protectedToken), StandardCharsets.US_ASCII,
-            StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE);
-        try { Files.move(staged, file, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE); }
-        catch (AtomicMoveNotSupportedException ignored) { Files.move(staged, file, StandardCopyOption.REPLACE_EXISTING); }
+        Path staged = Files.createTempFile(file.getParent(), "microsoft-refresh-", ".part");
+        try {
+            Files.writeString(staged, Base64.getEncoder().encodeToString(protectedToken), StandardCharsets.US_ASCII,
+                StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE);
+            try { Files.move(staged, file, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE); }
+            catch (AtomicMoveNotSupportedException ignored) { Files.move(staged, file, StandardCopyOption.REPLACE_EXISTING); }
+        } finally { Files.deleteIfExists(staged); }
     }
 
     private static void windowsClear(Path home) throws IOException { Files.deleteIfExists(windowsFile(home)); }
