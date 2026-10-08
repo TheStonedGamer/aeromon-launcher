@@ -10,6 +10,6 @@ Updater checks passed for signatures, safe paths, staged installation, saves, re
 
 The public download page and MultiMC/Prism archives are deployed at https://aeromon.cc/launcher.html. Each archive pins the published pack's exact files, supplies the Minecraft/NeoForge versions, and adds mc.aeromon.cc for newly imported instances. Import into a new instance to preserve existing launcher preferences and servers.
 
-On the web host, aeromon-pack-downloads.timer checks hourly. Its isolated Python environment verifies the signed stable release and file hashes before updating packs. Website backups are in /srv/pixsite/backups/prerelease-20260930. No Minecraft server restart is needed.
+On the web host, aeromon-pack-downloads.path starts the isolated publishing service when Aeromon Control changes the stable client release pointer. The service verifies the signed release and file hashes before updating the Prism, MultiMC, and CurseForge client packs. Website backups are in /srv/pixsite/backups/prerelease-20260930. No Minecraft server restart is needed.
 
 Private signing keys and account tokens are excluded from Git. OS signing/notarization and native gameplay checks on Linux/macOS are still pending. Tag builds create draft GitHub pre-releases for review.

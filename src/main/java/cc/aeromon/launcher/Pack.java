@@ -27,6 +27,10 @@ final class Pack {
         "launcher_profiles.json", "usercache.json"
     );
     private static final Set<String> SEEDABLE_PLAYER_FILES = Set.of("options.txt", "servers.dat");
+    private static final Set<String> OPTIONAL_MOD_FILES = Set.of(
+        "mods/sodium-neoforge-0.8.13+mc1.21.1.jar",
+        "mods/sodium-extra-neoforge-0.9.4+mc1.21.1.jar"
+    );
     final Path home, instance, state;
     record Release(JsonObject manifest, byte[] raw, String signature) { String version(){return manifest.get("version").getAsString();} }
     Pack(Path home) throws IOException { this.home=home.toAbsolutePath().normalize(); instance=this.home.resolve("instance"); state=this.home.resolve("launcher"); Files.createDirectories(instance); Files.createDirectories(state); }
@@ -46,8 +50,9 @@ final class Pack {
         return new Release(manifest,raw,pointer.get("signature").getAsString());
     }
     Release latest(String channel) throws Exception {
-        if(!Set.of("stable","beta","test").contains(channel)) throw new IllegalArgumentException("Invalid channel");
-        var pointer=Net.json(FEED+"/channels/"+channel+".json"); String version=pointer.get("version").getAsString();
+        if(!Set.of("stable","test","custom").contains(channel)) throw new IllegalArgumentException("Invalid channel");
+        String feedChannel=channel.equals("custom")?"stable":channel;
+        var pointer=Net.json(FEED+"/channels/"+feedChannel+".json"); String version=pointer.get("version").getAsString();
         if(!version.matches("[A-Za-z0-9][A-Za-z0-9._-]{0,63}")) throw new SecurityException("Invalid version");
         return verify(Net.bytes(FEED+"/releases/"+version+"/manifest.json"),pointer,KEY);
     }
@@ -84,6 +89,7 @@ final class Pack {
         throw new SecurityException("No checksum for "+file.get("path"));
     }
     String installed()throws IOException {Path p=state.resolve("installed.json");return Files.exists(p)?JsonParser.parseString(Files.readString(p)).getAsJsonObject().get("version").getAsString():"Not installed";}
+    JsonArray installedManifestFiles()throws IOException {Path p=state.resolve("installed.json");if(!Files.exists(p))return new JsonArray();JsonObject data=JsonParser.parseString(Files.readString(p)).getAsJsonObject();return data.has("files")?data.getAsJsonArray("files"):new JsonArray();}
     void install(Release release,Consumer<String> progress)throws Exception {
         try(var channel=FileChannel.open(state.resolve("install.lock"),StandardOpenOption.CREATE,StandardOpenOption.WRITE);var lock=channel.tryLock()) {
             if(lock==null)throw new IOException("An installation is already running");
@@ -91,15 +97,28 @@ final class Pack {
             if(Files.exists(gamePid)){long pid=Long.parseLong(Files.readString(gamePid).trim());if(ProcessHandle.of(pid).map(ProcessHandle::isAlive).orElse(false))throw new IOException("Close Minecraft before updating the pack");Files.delete(gamePid);}
             recover();
             new CustomMods(this).checkPack(release);
+            Path optionalMods=state.resolve("optional-mods");Files.createDirectories(optionalMods);Set<String> optionalNames=new HashSet<>();
+            try(var tracked=Files.list(optionalMods)){for(Path saved:tracked.filter(Files::isRegularFile).toList()){
+                String name="mods/"+saved.getFileName();Path active=resolveSafe(instance,name);
+                if(Files.exists(active)&&Files.mismatch(saved,active)!=-1)throw new IOException("Optional mod "+saved.getFileName()+" was changed outside the launcher; resolve it before updating.");
+                optionalNames.add(name.toLowerCase(Locale.ROOT));
+            }}
             Path staging=state.resolve("staging");Files.createDirectories(staging);
             Map<String,JsonObject> desired=new LinkedHashMap<>();Set<String> manifestPaths=new HashSet<>();
             for(var element:release.manifest.getAsJsonArray("files")){
                 var file=element.getAsJsonObject();String path=file.get("path").getAsString();String key=path.toLowerCase(Locale.ROOT);
                 Path target=resolveSafe(instance,path);if(!manifestPaths.add(key))throw new IOException("Duplicate pack path");
                 boolean firstInstallPreference=SEEDABLE_PLAYER_FILES.contains(key)&&!Files.exists(target);
+                if(OPTIONAL_MOD_FILES.contains(key)||(file.has("optional")&&file.get("optional").getAsBoolean())){progress.accept("Optional mod is available in Client mods: "+path);continue;}
                 if(isPlayerDataPath(path)&&!firstInstallPreference){progress.accept("Preserving player data "+path);continue;}
                 safe(instance,path);desired.put(key,file);
             }
+            try(var tracked=Files.list(optionalMods)){for(Path saved:tracked.filter(Files::isRegularFile).toList()){
+                String path="mods/"+saved.getFileName(),key=path.toLowerCase(Locale.ROOT);Path active=resolveSafe(instance,path);
+                if(!manifestPaths.add(key)&&!OPTIONAL_MOD_FILES.contains(key))throw new IOException("The pack claims optional mod filename "+path+". Resolve the optional installation before updating.");
+                if(!Files.exists(active)){progress.accept("Optional mod is currently opted out: "+saved.getFileName());continue;}
+                JsonObject file=new JsonObject();file.addProperty("path",path);file.addProperty("size",Files.size(saved));file.addProperty("sha256",hash(saved,"SHA-256"));desired.put(key,file);
+            }}
             List<JsonObject> changed=new ArrayList<>();int done=0;
             for(var file:desired.values()){
                 String name=file.get("path").getAsString();progress.accept("Checking "+(++done)+" / "+desired.size()+" · "+name);
@@ -116,7 +135,7 @@ final class Pack {
             }
             List<String> paths=new ArrayList<>();for(var f:changed)paths.add(f.get("path").getAsString());
             Path installed=state.resolve("installed.json");
-            if(Files.exists(installed))for(var f:JsonParser.parseString(Files.readString(installed)).getAsJsonObject().getAsJsonArray("files")){String name=f.getAsJsonObject().get("path").getAsString();if(!desired.containsKey(name.toLowerCase(Locale.ROOT))&&!isPlayerDataPath(name))paths.add(name);}
+            if(Files.exists(installed))for(var f:JsonParser.parseString(Files.readString(installed)).getAsJsonObject().getAsJsonArray("files")){String name=f.getAsJsonObject().get("path").getAsString();if(!desired.containsKey(name.toLowerCase(Locale.ROOT))&&!isPlayerDataPath(name)&&!optionalNames.contains(name.toLowerCase(Locale.ROOT)))paths.add(name);}
             Path rollback=state.resolve("rollback-"+UUID.randomUUID());Files.createDirectories(rollback);
             JsonObject journal=new JsonObject();journal.addProperty("rollback",rollback.getFileName().toString());JsonArray entries=new JsonArray();
             for(String name:paths){Path target=safe(instance,name);JsonObject entry=new JsonObject();entry.addProperty("path",name);entry.addProperty("existed",Files.exists(target));entries.add(entry);if(Files.exists(target)){Path backup=safe(rollback,name);Files.createDirectories(backup.getParent());Files.copy(target,backup,StandardCopyOption.REPLACE_EXISTING);}}

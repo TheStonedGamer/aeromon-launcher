@@ -49,7 +49,7 @@ final class Minecraft {
     }
     static Session login(String clientId,Consumer<String> progress)throws Exception {
         String verifier=Base64.getUrlEncoder().withoutPadding().encodeToString(random(48));String challenge=Base64.getUrlEncoder().withoutPadding().encodeToString(MessageDigest.getInstance("SHA-256").digest(verifier.getBytes(StandardCharsets.US_ASCII)));String state=HexFormat.of().formatHex(random(24));
-        var callback=new CompletableFuture<String>();var server=HttpServer.create(new InetSocketAddress("127.0.0.1",0),0);String redirect="http://localhost:"+server.getAddress().getPort();
+        var callback=new CompletableFuture<String>();var server=HttpServer.create(new InetSocketAddress("127.0.0.1",0),0);String redirect="http://127.0.0.1:"+server.getAddress().getPort();
         server.createContext("/",exchange->{
             try{
                 Map<String,String> query=new HashMap<>();String raw=exchange.getRequestURI().getRawQuery();if(raw!=null)for(String pair:raw.split("&")){String[] parts=pair.split("=",2);query.put(URLDecoder.decode(parts[0],StandardCharsets.UTF_8),parts.length>1?URLDecoder.decode(parts[1],StandardCharsets.UTF_8):"");}
@@ -128,6 +128,7 @@ final class Minecraft {
         } catch(Exception ignored) { return false; }
     }
     void prepare(JsonObject pack,Path runtimeRoot)throws Exception {
+        var sharedPacks=new ResourcePacks(ResourcePacks.baseFor(home));sharedPacks.ensureDefaults(pack);sharedPacks.sync(home.resolve("instance"));
         String minecraft=pack.get("minecraft").getAsString(),neo=pack.get("neoforge").getAsString();if(!minecraft.matches("[0-9.]+")||!neo.matches("[0-9.]+"))throw new IOException("Unsupported runtime version");
         Files.createDirectories(runtimeRoot);var base=vanilla(minecraft,runtimeRoot);artifact(base.getAsJsonObject("downloads").getAsJsonObject("client"),runtimeRoot.resolve("versions/"+minecraft+"/"+minecraft+".jar"));
         libraries(base,runtimeRoot);
@@ -148,6 +149,7 @@ final class Minecraft {
     }
     /** Copy only manifest-owned client files into the official launcher's game directory. */
     void syncOfficialInstance(Pack.Release release, Path gameDir) throws Exception {
+        new ResourcePacks(ResourcePacks.baseFor(home)).sync(gameDir);
         Path source=home.resolve("instance").toAbsolutePath().normalize();
         Path target=gameDir.toAbsolutePath().normalize();
         if(source.equals(target))return;
@@ -163,6 +165,7 @@ final class Minecraft {
             if(Pack.matches(to,file))continue;
             Files.createDirectories(to.getParent());Path temp=to.resolveSibling(to.getFileName()+".aeromon-part");Files.copy(from,temp,StandardCopyOption.REPLACE_EXISTING);Files.move(temp,to,StandardCopyOption.REPLACE_EXISTING);
         }
+        Path optionalState=home.resolve("launcher/official-optional-files.json");Set<String> optionalNames=new HashSet<>();Path optionalMods=home.resolve("launcher/optional-mods");if(Files.isDirectory(optionalMods))try(var files=Files.list(optionalMods)){for(Path record:files.filter(Files::isRegularFile).toList()){String name=record.getFileName().toString();Path enabled=source.resolve("mods").resolve(name);if(!Files.isRegularFile(enabled)||Files.mismatch(record,enabled)!=-1)continue;optionalNames.add(name.toLowerCase(Locale.ROOT));Path official=target.resolve("mods").resolve(name);Files.createDirectories(official.getParent());Files.copy(enabled,official,StandardCopyOption.REPLACE_EXISTING);}}if(Files.exists(optionalState))for(JsonElement old:JsonParser.parseString(Files.readString(optionalState)).getAsJsonArray()){String name=old.getAsString();if(!optionalNames.contains(name.toLowerCase(Locale.ROOT)))Files.deleteIfExists(target.resolve("mods").resolve(name));}JsonArray optionalOwned=new JsonArray();optionalNames.forEach(optionalOwned::add);Pack.atomic(optionalState,optionalOwned.toString().getBytes(StandardCharsets.UTF_8));
         Path custom=home.resolve("launcher/custom-mods"),customState=home.resolve("launcher/official-custom-files.json");Set<String> customNames=new HashSet<>();
         if(Files.isDirectory(custom))try(var files=Files.list(custom)){for(Path original:files.filter(Files::isRegularFile).toList()){
             String name=original.getFileName().toString();Path enabled=source.resolve("mods").resolve(name);if(!Files.exists(enabled))continue;customNames.add(name.toLowerCase(Locale.ROOT));

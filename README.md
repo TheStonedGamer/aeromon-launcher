@@ -35,7 +35,7 @@ java -jar build/dist/aeromon-launcher.jar
 
 Keep `gson.jar` alongside the shared launcher JAR. Platform application images contain everything. On Windows use `-OutputDir build/another-package` when producing a second package without overwriting an earlier build.
 
-Instance data lives in `%APPDATA%/Aeromon` (Windows), `~/Library/Application Support/Aeromon` (macOS), or `$XDG_DATA_HOME/Aeromon` (Linux, default `~/.local/share/Aeromon`). Use `--home PATH` for isolated tests. `--check` verifies the stable release; `--install --prepare` installs the pack and game runtime; `--beta` selects beta. Development sign-in can be checked with `--login-test`. Access tokens stay in memory and are never included in logs or pack manifests.
+Instance data lives in `%APPDATA%/Aeromon` (Windows), `~/Library/Application Support/Aeromon` (macOS), or `$XDG_DATA_HOME/Aeromon` (Linux, default `~/.local/share/Aeromon`). Use `--home PATH` for isolated tests. `--check` verifies the stable release; `--install --prepare` installs the pack and game runtime; `--test` selects the separate test pack and server. Development sign-in can be checked with `--login-test`. Access tokens stay in memory and are never included in logs or pack manifests.
 
 ## Repository boundaries
 

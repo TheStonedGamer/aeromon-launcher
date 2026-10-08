@@ -3,7 +3,7 @@
 Download the x86_64 `.pkg.tar.zst` from https://aeromon.cc/launcher.html, then install it:
 
 ```sh
-sudo pacman -U ./aeromon-launcher-bin-1.0.4-1-x86_64.pkg.tar.zst
+sudo pacman -U ./aeromon-launcher-bin-1.0.16-1-x86_64.pkg.tar.zst
 ```
 
 Launch **Aeromon Launcher** from your desktop menu, or run `aeromon`.
