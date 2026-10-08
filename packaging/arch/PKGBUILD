@@ -1,6 +1,6 @@
 # Aeromon's published x86_64 launcher, including its Java runtime.
 pkgname=aeromon-launcher-bin
-pkgver=1.0.23
+pkgver=1.0.24
 pkgrel=1
 pkgdesc='Aeromon Pixelmon launcher with managed pack and signed application updates'
 arch=('x86_64')
@@ -10,7 +10,7 @@ provides=('aeromon-launcher')
 conflicts=('aeromon-launcher')
 options=('!strip' '!debug')
 source=("https://github.com/TheStonedGamer/aeromon-launcher/releases/download/v$pkgver/Aeromon-$pkgver-linux-x64.tar.gz" 'aeromon.desktop')
-sha256sums=('b6db2338641892e08fa5856fa007f26afebf05e0442fc3ef5035882bb9476fe1' 'f2fb76c0d39131c87cf0f88c29ff04d9bd13ffa49756642015718f380c0823a8')
+sha256sums=('0d5448a28feef2f57672b51524845a2ceefc74bfd6503f68c4f150b68855b79b' 'f2fb76c0d39131c87cf0f88c29ff04d9bd13ffa49756642015718f380c0823a8')
 
 package() {
   install -d "$pkgdir/opt" "$pkgdir/usr/bin"
