@@ -156,7 +156,7 @@ public final class Main {
     void install(){splash.showLoading("Preparing your Aeromon pack");run(()->{pack.install(release,this::message);new Minecraft(pack.home,this::message).prepare(release.manifest());ui(()->{install.setText("CHECK FOR UPDATES");status.setText("Aeromon "+release.version()+" installed. Sign in to play.");});});}
     String clientId()throws Exception {String id=System.getProperty("aeromon.clientId",prefs().get("clientId", "6e76a2c9-5a48-41d6-9e6a-3aa2e60c36fa"));if(id.isBlank())throw new Exception("Microsoft application registration is pending. Enter Aeromon's public client ID in Settings.");return id;}
     java.util.prefs.Preferences prefs(){return java.util.prefs.Preferences.userNodeForPackage(Main.class);}
-    int memory(){return prefs().getInt("memory",8160);}
+    int memory(){return prefs().getInt("memory",8192);}
     void settings(){
         var ram=new JSpinner(new SpinnerNumberModel(memory(),2048,32768,512));
         var content=new JPanel(new GridLayout(0,1,5,8));content.add(new JLabel("Minecraft memory (MB)"));content.add(ram);

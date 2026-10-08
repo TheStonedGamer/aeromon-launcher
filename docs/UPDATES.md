@@ -12,7 +12,7 @@ Downloads go to user storage under `launcher/updates/VERSION`. A separate proces
 
 ## Publishing
 
-Launcher 1.0.13 removes the retired beta option. The pack selector now exposes stable and test; test uses the separate test pack and `test.aeromon.cc` server.
+Launcher 1.0.23 adds progress reporting for cloud backup uploads and restores. The self-updating JAR and native launchers share version 1.0.23; pack releases keep their separate version stream. The pack selector exposes Stable, Test, and Custom, with Custom isolated from the Stable instance.
 
 1. Pass the numeric version to the build (`build.ps1 -Version VERSION`, or `AEROMON_VERSION` for shell/CI). Build and verify packages on all four CI targets.
 2. Transfer the two application JARs, `scripts/sign-release.py` and `scripts/delta.py` to the signing host. Run the signer with `--version VERSION --key KEY --dist DIST --output OUTPUT --base-url https://aeromon.cc/updates/VERSION`, and repeat `--previous OLD_DIST` for supported installed versions. The key stays on the server. Patches are advertised only when at least 10% smaller than a full file.
