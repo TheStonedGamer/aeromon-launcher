@@ -62,6 +62,27 @@ jobs:
                       raise SystemExit(f"Cannot read CI artifact entry: {source}")
                   (destination / target).write_bytes(stream.read())
           PY
+      - name: Build Arch Linux package from the CI-built Linux bundle
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/arch-source" "$RUNNER_TEMP/arch-output"
+          cp packaging/arch/PKGBUILD packaging/arch/aeromon.desktop "$RUNNER_TEMP/arch-source/"
+          docker run --rm \
+            --env VERSION="$VERSION" \
+            --env AEROMON_LINUX_BUNDLE_URL="file:///runner-temp/release/Aeromon-$VERSION-linux-x64.tar.gz" \
+            --volume "$RUNNER_TEMP:/runner-temp" \
+            archlinux:base-devel bash -euc '
+              pacman -Syyu --noconfirm base-devel freetype2 fontconfig libx11 libxext libxi libxrender libxtst alsa-lib xdg-utils
+              useradd -m builder
+              mkdir -p /tmp/aeromon-build
+              cp -a /runner-temp/arch-source/. /tmp/aeromon-build/
+              chown -R builder:builder /tmp/aeromon-build
+              su - builder -c "cd /tmp/aeromon-build && AEROMON_LINUX_BUNDLE_URL=$AEROMON_LINUX_BUNDLE_URL makepkg --noconfirm --syncdeps --cleanbuild"
+              cp /tmp/aeromon-build/aeromon-launcher-bin-$VERSION-1-x86_64.pkg.tar.zst /runner-temp/arch-output/
+            '
+          test -f "$RUNNER_TEMP/arch-output/aeromon-launcher-bin-$VERSION-1-x86_64.pkg.tar.zst"
       - name: Download previous releases for optional deltas
         if: inputs.previous_versions != ''
         env:
@@ -134,12 +155,17 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ inputs.version }}
-        run: gh release upload "v$VERSION" "$RUNNER_TEMP"/signed/* --repo "$GITHUB_REPOSITORY" --clobber
+        run: gh release upload "v$VERSION" "$RUNNER_TEMP"/signed/* "$RUNNER_TEMP"/arch-output/*.pkg.tar.zst --repo "$GITHUB_REPOSITORY" --clobber
       - uses: actions/upload-artifact@v4
         with:
           name: aeromon-signed-update-${{ inputs.version }}
           path: ${{ runner.temp }}/signed/
           if-no-files-found: error
+      - name: Publish as the latest stable release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+        run: gh release edit "v$VERSION" --repo "$GITHUB_REPOSITORY" --draft=false --prerelease=false --latest
       - name: Write deployment handoff
         env:
           VERSION: ${{ inputs.version }}
@@ -147,5 +173,6 @@ jobs:
         run: |
           echo "## Signed launcher $VERSION" >> "$GITHUB_STEP_SUMMARY"
           echo >> "$GITHUB_STEP_SUMMARY"
-          echo 'The CI-built JARs are signed and attached to the draft GitHub release. Deploy the signed manifest, channel, JARs, and optional delta files to the immutable update directory before activating the live channel pointer.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'CI signed the launcher update, built the Arch package, attached all signed assets, and published this version as the latest stable GitHub release. The Aeromon download page reads the latest stable release metadata and refreshes platform versions and links automatically.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'For in-launcher self-updates, deploy the signed manifest, channel, JARs, and optional delta files to the immutable update directory, then activate the live channel pointer.' >> "$GITHUB_STEP_SUMMARY"
           echo "Default update directory: https://aeromon.cc/updates/$VERSION/r1" >> "$GITHUB_STEP_SUMMARY"
