@@ -1,6 +1,6 @@
 # Aeromon's published x86_64 launcher, including its Java runtime.
 pkgname=aeromon-launcher-bin
-pkgver=1.0.16
+pkgver=1.0.23
 pkgrel=1
 pkgdesc='Aeromon Pixelmon launcher with managed pack and signed application updates'
 arch=('x86_64')
@@ -9,15 +9,14 @@ depends=('glibc' 'gcc-libs' 'zlib' 'freetype2' 'fontconfig' 'libx11' 'libxext' '
 provides=('aeromon-launcher')
 conflicts=('aeromon-launcher')
 options=('!strip' '!debug')
-source=("https://aeromon.cc/downloads/Aeromon-1.0.4-linux-x64.tar.gz" 'aeromon.desktop' 'aeromon-launcher.jar::https://aeromon.cc/updates/1.0.16/r1/aeromon-launcher.jar')
-sha256sums=('2dc08f252918d9f5a06035c42da68e23aa4736607640db16e3b4028667978013' 'f2fb76c0d39131c87cf0f88c29ff04d9bd13ffa49756642015718f380c0823a8' '370136e1c8476ca84c2810e99f7f95f040b86ca9af89dc9e58faa8694ca1b595')
+source=("https://github.com/TheStonedGamer/aeromon-launcher/releases/download/v$pkgver/Aeromon-$pkgver-linux-x64.tar.gz" 'aeromon.desktop')
+sha256sums=('b6db2338641892e08fa5856fa007f26afebf05e0442fc3ef5035882bb9476fe1' 'f2fb76c0d39131c87cf0f88c29ff04d9bd13ffa49756642015718f380c0823a8')
 
 package() {
   install -d "$pkgdir/opt" "$pkgdir/usr/bin"
-  cp -a "$srcdir/aeromon" "$pkgdir/opt/aeromon"
-  install -m644 "$srcdir/aeromon-launcher.jar" "$pkgdir/opt/aeromon/lib/app/aeromon-launcher.jar"
-  sed -i "s/jpackage.app.version=.*/jpackage.app.version=$pkgver/" "$pkgdir/opt/aeromon/lib/app/aeromon.cfg"
-  ln -s /opt/aeromon/bin/aeromon "$pkgdir/usr/bin/aeromon"
+  cp -a "$srcdir/Aeromon" "$pkgdir/opt/aeromon"
+  sed -i "s/jpackage.app.version=.*/jpackage.app.version=$pkgver/" "$pkgdir/opt/aeromon/lib/app/Aeromon.cfg"
+  ln -s /opt/aeromon/bin/Aeromon "$pkgdir/usr/bin/aeromon"
   install -Dm644 "$srcdir/aeromon.desktop" "$pkgdir/usr/share/applications/aeromon.desktop"
-  install -Dm644 "$srcdir/aeromon/lib/aeromon.png" "$pkgdir/usr/share/icons/hicolor/128x128/apps/aeromon.png"
+  install -Dm644 "$srcdir/Aeromon/lib/Aeromon.png" "$pkgdir/usr/share/icons/hicolor/128x128/apps/aeromon.png"
 }
