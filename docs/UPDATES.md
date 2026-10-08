@@ -12,11 +12,23 @@ Downloads go to user storage under `launcher/updates/VERSION`. A separate proces
 
 ## Publishing
 
-Launcher 1.0.23 adds progress reporting for cloud backup uploads and restores. The self-updating JAR and native launchers share version 1.0.23; pack releases keep their separate version stream. The pack selector exposes Stable, Test, and Custom, with Custom isolated from the Stable instance.
+Launcher 1.0.24 adds cross-account content-addressed JourneyMap PNG tile storage while keeping each account's snapshot manifest and settings private. Launcher 1.0.23 added progress reporting for cloud backup uploads and restores. The self-updating JAR and native launchers share one launcher version; pack releases keep their separate version stream. The pack selector exposes Stable, Test, and Custom, with Custom isolated from the Stable instance.
 
 1. Pass the numeric version to the build (`build.ps1 -Version VERSION`, or `AEROMON_VERSION` for shell/CI). Build and verify packages on all four CI targets.
 2. Transfer the two application JARs, `scripts/sign-release.py` and `scripts/delta.py` to the signing host. Run the signer with `--version VERSION --key KEY --dist DIST --output OUTPUT --base-url https://aeromon.cc/updates/VERSION`, and repeat `--previous OLD_DIST` for supported installed versions. The key stays on the server. Patches are advertised only when at least 10% smaller than a full file.
 3. Publish both JARs, the signed manifest, and generated patch files in `/updates/VERSION/`. Verify reconstruction against each supported base with `PublishedUpdateTest` before activating the channel. Preserve these immutable version directories.
 4. Atomically replace `/updates/launcher-channel.json` with the tested signed channel file. Mirror that pointer into the legacy latest GitHub release's `launcher-channel.json` until old clients have migrated. Older clients use a full download for their first upgrade; subsequent updates can use patches.
+
+### Verify the GitHub compatibility mirror
+
+Use `scripts/mirror-release-channel.py` for the mirror upload and read-back check. It uploads the signed pointer with GitHub CLI, downloads it again, verifies the Ed25519 signature and manifest hash, checks both public JAR hashes and embedded version, and confirms the compiled Minecraft class retains the loopback OAuth callback. This replaces the former inline PowerShell command that used `Invoke-RestMethod`, `Invoke-WebRequest`, and `Get-FileHash`.
+
+From the `launcher` directory, run:
+
+```sh
+python scripts/mirror-release-channel.py --tag v1.0.12 --channel build/verify-1.0.22/launcher-channel.json --expected-version 1.0.22 --output build/verify-1.0.22
+```
+
+Change the tag and version to the intended legacy release and signed channel. The GitHub CLI must be authenticated, and Python must have the `cryptography` package available.
 
 The first candidate remains development work while Minecraft Services approval and licensed server-join verification are pending. Offline launch allows local pack testing and disables multiplayer and chat.
