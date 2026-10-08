@@ -14,10 +14,10 @@ Downloads go to user storage under `launcher/updates/VERSION`. A separate proces
 
 Launcher 1.0.24 adds cross-account content-addressed JourneyMap PNG tile storage while keeping each account's snapshot manifest and settings private. Launcher 1.0.23 added progress reporting for cloud backup uploads and restores. The self-updating JAR and native launchers share one launcher version; pack releases keep their separate version stream. The pack selector exposes Stable, Test, and Custom, with Custom isolated from the Stable instance.
 
-1. Pass the numeric version to the build (`build.ps1 -Version VERSION`, or `AEROMON_VERSION` for shell/CI). Build and verify packages on all four CI targets.
-2. Transfer the two application JARs, `scripts/sign-release.py` and `scripts/delta.py` to the signing host. Run the signer with `--version VERSION --key KEY --dist DIST --output OUTPUT --base-url https://aeromon.cc/updates/VERSION`, and repeat `--previous OLD_DIST` for supported installed versions. The key stays on the server. Patches are advertised only when at least 10% smaller than a full file.
-3. Publish both JARs, the signed manifest, and generated patch files in `/updates/VERSION/`. Verify reconstruction against each supported base with `PublishedUpdateTest` before activating the channel. Preserve these immutable version directories.
-4. Atomically replace `/updates/launcher-channel.json` with the tested signed channel file. Mirror that pointer into the legacy latest GitHub release's `launcher-channel.json` until old clients have migrated. Older clients use a full download for their first upgrade; subsequent updates can use patches.
+1. Pass the numeric version as a `vVERSION` tag. GitHub Actions builds packages for all four CI targets and creates a draft prerelease.
+2. Configure the `AEROMON_RELEASE_KEY` secret in the `launcher-signing` GitHub Environment. Dispatch **Sign launcher release** with the tag version and optional previous versions. The workflow downloads the CI-built Linux package, extracts the JARs, signs the manifest, verifies the pinned Ed25519 key, and attaches signed assets to the draft. The private key never enters the repository or workflow artifacts.
+3. Deploy both JARs, the signed manifest, and generated patch files from the signed workflow artifact to `/updates/VERSION/r1/`. Verify reconstruction against each supported base with `PublishedUpdateTest` before activating the channel. Preserve these immutable version directories.
+4. Atomically replace `/updates/launcher-channel.json` with the tested signed channel file after the payloads are public. Mirror that pointer into the legacy latest GitHub release's `launcher-channel.json` until old clients have migrated. Older clients use a full download for their first upgrade; subsequent updates can use patches.
 
 ### Verify the GitHub compatibility mirror
 

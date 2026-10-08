@@ -1,4 +1,4 @@
-"""Create update assets on the signing host. Never copy its private key into Git."""
+"""Create Aeromon signed update assets. Keep the private key in a protected CI environment or signing host, never in Git."""
 import argparse
 import hashlib
 import json

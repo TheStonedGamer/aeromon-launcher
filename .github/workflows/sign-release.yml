@@ -1,0 +1,151 @@
+name: Sign launcher release
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Existing launcher release tag version, without v
+        required: true
+        type: string
+      previous_versions:
+        description: Optional comma-separated versions to create delta patches from
+        required: false
+        type: string
+      base_url:
+        description: Immutable public update directory; defaults to Aeromon's versioned r1 directory
+        required: false
+        type: string
+permissions:
+  contents: write
+concurrency:
+  group: sign-launcher-${{ inputs.version }}
+  cancel-in-progress: false
+jobs:
+  sign:
+    runs-on: ubuntu-latest
+    environment: launcher-signing
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: refs/tags/v${{ inputs.version }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install signing dependencies
+        run: python -m pip install --disable-pip-version-check cryptography
+      - name: Download CI-built release payload
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo 'Version must be numeric, e.g. 1.0.24' >&2
+            exit 1
+          fi
+          mkdir -p "$RUNNER_TEMP/release" "$RUNNER_TEMP/dist"
+          gh release download "v$VERSION" --repo "$GITHUB_REPOSITORY" \
+            --pattern "Aeromon-$VERSION-linux-x64.tar.gz" --dir "$RUNNER_TEMP/release"
+          python - "$RUNNER_TEMP/release/Aeromon-$VERSION-linux-x64.tar.gz" "$RUNNER_TEMP/dist" <<'PY'
+          import pathlib, sys, tarfile
+          archive, destination = pathlib.Path(sys.argv[1]), pathlib.Path(sys.argv[2])
+          wanted = {
+              "Aeromon/lib/app/aeromon-launcher.jar": "aeromon-launcher.jar",
+              "Aeromon/lib/app/gson.jar": "gson.jar",
+          }
+          with tarfile.open(archive, "r:gz") as bundle:
+              for source, target in wanted.items():
+                  item = bundle.getmember(source)
+                  if not item.isfile():
+                      raise SystemExit(f"CI artifact entry is not a regular file: {source}")
+                  stream = bundle.extractfile(item)
+                  if stream is None:
+                      raise SystemExit(f"Cannot read CI artifact entry: {source}")
+                  (destination / target).write_bytes(stream.read())
+          PY
+      - name: Download previous releases for optional deltas
+        if: inputs.previous_versions != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PREVIOUS_VERSIONS: ${{ inputs.previous_versions }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/previous"
+          IFS=',' read -ra VERSIONS <<< "$PREVIOUS_VERSIONS"
+          for version in "${VERSIONS[@]}"; do
+            version="${version//[[:space:]]/}"
+            [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "Invalid previous version: $version" >&2; exit 1; }
+            mkdir -p "$RUNNER_TEMP/previous/$version/archive" "$RUNNER_TEMP/previous/$version/dist"
+            gh release download "v$version" --repo "$GITHUB_REPOSITORY" \
+              --pattern "Aeromon-$version-linux-x64.tar.gz" --dir "$RUNNER_TEMP/previous/$version/archive"
+            python - "$RUNNER_TEMP/previous/$version/archive/Aeromon-$version-linux-x64.tar.gz" "$RUNNER_TEMP/previous/$version/dist" <<'PY'
+          import pathlib, sys, tarfile
+          archive, destination = pathlib.Path(sys.argv[1]), pathlib.Path(sys.argv[2])
+          wanted = {
+              "Aeromon/lib/app/aeromon-launcher.jar": "aeromon-launcher.jar",
+              "Aeromon/lib/app/gson.jar": "gson.jar",
+          }
+          with tarfile.open(archive, "r:gz") as bundle:
+              for source, target in wanted.items():
+                  item = bundle.getmember(source)
+                  stream = bundle.extractfile(item)
+                  if stream is None:
+                      raise SystemExit(f"Cannot read previous artifact entry: {source}")
+                  (destination / target).write_bytes(stream.read())
+          PY
+          done
+      - name: Sign manifest and verify pinned key
+        env:
+          AEROMON_RELEASE_KEY: ${{ secrets.AEROMON_RELEASE_KEY }}
+          VERSION: ${{ inputs.version }}
+          REQUESTED_BASE_URL: ${{ inputs.base_url }}
+          PREVIOUS_VERSIONS: ${{ inputs.previous_versions }}
+        run: |
+          set -euo pipefail
+          [[ -n "$AEROMON_RELEASE_KEY" ]] || { echo 'Configure the AEROMON_RELEASE_KEY Actions secret first.' >&2; exit 1; }
+          key_file="$RUNNER_TEMP/aeromon-release-key.pem"
+          trap 'rm -f "$key_file"' EXIT
+          umask 077
+          printf '%s\n' "$AEROMON_RELEASE_KEY" > "$key_file"
+          base_url="$REQUESTED_BASE_URL"
+          if [[ -z "$base_url" ]]; then base_url="https://aeromon.cc/updates/$VERSION/r1"; fi
+          args=(--version "$VERSION" --key "$key_file" --dist "$RUNNER_TEMP/dist" --output "$RUNNER_TEMP/signed" --base-url "$base_url")
+          if [[ -n "$PREVIOUS_VERSIONS" ]]; then
+            IFS=',' read -ra VERSIONS <<< "$PREVIOUS_VERSIONS"
+            for version in "${VERSIONS[@]}"; do
+              version="${version//[[:space:]]/}"
+              args+=(--previous "$RUNNER_TEMP/previous/$version/dist")
+            done
+          fi
+          python scripts/sign-release.py "${args[@]}"
+          cp "$RUNNER_TEMP/signed/launcher-channel.json" "$RUNNER_TEMP/signed/launcher-channel-$VERSION.json"
+          python - "$RUNNER_TEMP/signed" "$VERSION" <<'PY'
+          import hashlib, json, pathlib, sys
+          from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
+          folder, version = pathlib.Path(sys.argv[1]), sys.argv[2]
+          pointer = json.loads((folder / "launcher-channel.json").read_bytes())
+          manifest = (folder / "launcher-manifest.json").read_bytes()
+          if pointer["version"] != version or pointer["sha256"] != hashlib.sha256(manifest).hexdigest():
+              raise SystemExit("Signed channel metadata does not match the manifest")
+          key = bytes.fromhex("1015bf1ab708746279cdf9b5c6d0ad700365db1c8ff8da62d70276c7656bea4d")
+          Ed25519PublicKey.from_public_bytes(key).verify(bytes.fromhex(pointer["signature"]), manifest)
+          print(f"Verified Ed25519 signature and manifest for launcher {version}")
+          PY
+      - name: Attach signed assets to the draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+        run: gh release upload "v$VERSION" "$RUNNER_TEMP"/signed/* --repo "$GITHUB_REPOSITORY" --clobber
+      - uses: actions/upload-artifact@v4
+        with:
+          name: aeromon-signed-update-${{ inputs.version }}
+          path: ${{ runner.temp }}/signed/
+          if-no-files-found: error
+      - name: Write deployment handoff
+        env:
+          VERSION: ${{ inputs.version }}
+          BASE_URL: ${{ inputs.base_url }}
+        run: |
+          echo "## Signed launcher $VERSION" >> "$GITHUB_STEP_SUMMARY"
+          echo >> "$GITHUB_STEP_SUMMARY"
+          echo 'The CI-built JARs are signed and attached to the draft GitHub release. Deploy the signed manifest, channel, JARs, and optional delta files to the immutable update directory before activating the live channel pointer.' >> "$GITHUB_STEP_SUMMARY"
+          echo "Default update directory: https://aeromon.cc/updates/$VERSION/r1" >> "$GITHUB_STEP_SUMMARY"
