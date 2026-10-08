@@ -1,0 +1,34 @@
+# Launcher updates and Java
+
+The native wrapper contains a Java 21 bootstrap runtime. Players can open the application without a system Java installation. Minecraft gets a separate private Temurin Java 21 JRE from Adoptium, selected for the host OS and CPU, verified against the official package SHA256, and tested before use.
+
+At startup the launcher checks `https://aeromon.cc/updates/launcher-channel.json`. Updates require an Ed25519 signature from the existing Aeromon release key, a matching manifest SHA256, and exact hashes for both application JARs. The JAR's embedded version must match the signed version. The legacy GitHub channel points at the same signed update so older installed launchers can upgrade once and acquire delta support.
+
+Updates reuse unchanged local files. For changed JARs, signed manifests may advertise `aeromon-copy-add-v1` patches keyed by the exact base SHA256. The patch reuses identical compressed ZIP payloads and supplies changed bytes in a gzip copy/add stream. The client verifies the base match, patch size/hash, bounded reconstruction, final size/hash and embedded application version. A missing, corrupt or incompatible patch falls back to the signed full download. No installed native executable is overwritten. Only launcher JARs use these binary patches; pack updates already download only changed manifest files.
+
+Pack updates reserve player-owned paths: saves, screenshots, logs, JourneyMap data and configuration, Xaero/VoxelMap data, resource packs, shader packs, schematics, player options/server lists, and selected client-mod preferences. These paths are excluded from installation, stale-file cleanup, rollback recovery, and official-launcher synchronization, including cleanup based on older ownership records. `options.txt` and `servers.dat` may be seeded when absent; existing files are preserved.
+
+Downloads go to user storage under `launcher/updates/VERSION`. A separate process waits for the launcher to exit, atomically selects the new release, and restarts it. The original native wrapper verifies and opens the selected updated JAR on subsequent starts. Previous releases remain on disk. The wrapper itself and its bundled bootstrap runtime are not replaced by this JAR update mechanism.
+
+## Publishing
+
+Launcher 1.0.24 adds cross-account content-addressed JourneyMap PNG tile storage while keeping each account's snapshot manifest and settings private. Launcher 1.0.23 added progress reporting for cloud backup uploads and restores. The self-updating JAR and native launchers share one launcher version; pack releases keep their separate version stream. The pack selector exposes Stable, Test, and Custom, with Custom isolated from the Stable instance.
+
+1. Pass the numeric version as a `vVERSION` tag. GitHub Actions builds packages for all four CI targets and creates a draft prerelease.
+2. Configure the `AEROMON_RELEASE_KEY` secret in the `launcher-signing` GitHub Environment. Dispatch **Sign launcher release** with the tag version and optional previous versions. The workflow downloads the CI-built Linux package, extracts the JARs, signs the manifest, verifies the pinned Ed25519 key, and attaches signed assets to the draft. The private key never enters the repository or workflow artifacts.
+3. Deploy both JARs, the signed manifest, and generated patch files from the signed workflow artifact to `/updates/VERSION/r1/`. Verify reconstruction against each supported base with `PublishedUpdateTest` before activating the channel. Preserve these immutable version directories.
+4. Atomically replace `/updates/launcher-channel.json` with the tested signed channel file after the payloads are public. Mirror that pointer into the legacy latest GitHub release's `launcher-channel.json` until old clients have migrated. Older clients use a full download for their first upgrade; subsequent updates can use patches.
+
+### Verify the GitHub compatibility mirror
+
+Use `scripts/mirror-release-channel.py` for the mirror upload and read-back check. It uploads the signed pointer with GitHub CLI, downloads it again, verifies the Ed25519 signature and manifest hash, checks both public JAR hashes and embedded version, and confirms the compiled Minecraft class retains the loopback OAuth callback. This replaces the former inline PowerShell command that used `Invoke-RestMethod`, `Invoke-WebRequest`, and `Get-FileHash`.
+
+From the `launcher` directory, run:
+
+```sh
+python scripts/mirror-release-channel.py --tag v1.0.12 --channel build/verify-1.0.22/launcher-channel.json --expected-version 1.0.22 --output build/verify-1.0.22
+```
+
+Change the tag and version to the intended legacy release and signed channel. The GitHub CLI must be authenticated, and Python must have the `cryptography` package available.
+
+The first candidate remains development work while Minecraft Services approval and licensed server-join verification are pending. Offline launch allows local pack testing and disables multiplayer and chat.
