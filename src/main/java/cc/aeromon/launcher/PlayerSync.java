@@ -14,7 +14,7 @@ import java.util.zip.*;
 /** Explicit, account-scoped cloud snapshots. Credentials never enter archives. */
 final class PlayerSync {
     static final String ENDPOINT="https://panel.aeromon.cc/player-sync/v1/";
-    static final long MAX_BYTES=256L*1024*1024,MAX_EXPANDED=1024L*1024*1024;
+    static final long MAX_BYTES=1024L*1024*1024,MAX_EXPANDED=2L*1024*1024*1024;
     static final HttpClient HTTP=HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(20)).followRedirects(HttpClient.Redirect.NEVER).build();
     final Pack pack; final Minecraft.Session session; final String branch; final Path state; final java.util.function.BiConsumer<Long,Long> progress;
     PlayerSync(Pack pack,Minecraft.Session session,String branch,java.util.function.BiConsumer<Long,Long> progress)throws IOException {
@@ -72,7 +72,7 @@ final class PlayerSync {
                 var entry=new ZipEntry(name);entry.setTime(0);output.putNextEntry(entry);Files.copy(file,output);output.closeEntry();
             }
         }
-        if(Files.size(archive)>MAX_BYTES)throw new IOException("Compressed snapshot exceeds 256 MB");
+        if(Files.size(archive)>MAX_BYTES)throw new IOException("Compressed snapshot exceeds 1 GiB");
     }
     void upload()throws Exception {
         stopped();
