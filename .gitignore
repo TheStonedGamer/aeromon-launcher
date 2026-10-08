@@ -19,3 +19,4 @@ __pycache__/
 manifest-example.json
 neoforge-installer.jar
 public-key.json
+packaging/arch/*.pkg.tar.zst
