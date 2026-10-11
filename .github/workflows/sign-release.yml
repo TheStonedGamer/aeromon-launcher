@@ -69,6 +69,9 @@ jobs:
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/arch-source" "$RUNNER_TEMP/arch-output"
           cp packaging/arch/PKGBUILD packaging/arch/aeromon.desktop "$RUNNER_TEMP/arch-source/"
+          BUNDLE_SHA256=$(sha256sum "$RUNNER_TEMP/release/Aeromon-$VERSION-linux-x64.tar.gz" | cut -d ' ' -f 1)
+          sed -i "s/^pkgver=.*/pkgver=$VERSION/" "$RUNNER_TEMP/arch-source/PKGBUILD"
+          sed -i "s/0d5448a28feef2f57672b51524845a2ceefc74bf6d503f68c4f150b68855b79b/$BUNDLE_SHA256/" "$RUNNER_TEMP/arch-source/PKGBUILD"
           docker run --rm \
             --env VERSION="$VERSION" \
             --env AEROMON_LINUX_BUNDLE_URL="file:///runner-temp/release/Aeromon-$VERSION-linux-x64.tar.gz" \
