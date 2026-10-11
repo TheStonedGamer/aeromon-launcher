@@ -49,7 +49,7 @@ final class Minecraft {
     }
     static Session login(String clientId,Consumer<String> progress)throws Exception {
         String verifier=Base64.getUrlEncoder().withoutPadding().encodeToString(random(48));String challenge=Base64.getUrlEncoder().withoutPadding().encodeToString(MessageDigest.getInstance("SHA-256").digest(verifier.getBytes(StandardCharsets.US_ASCII)));String state=HexFormat.of().formatHex(random(24));
-        var callback=new CompletableFuture<String>();var server=HttpServer.create(new InetSocketAddress("127.0.0.1",0),0);String redirect="http://127.0.0.1:"+server.getAddress().getPort();
+        var callback=new CompletableFuture<String>();var server=HttpServer.create(new InetSocketAddress("localhost",0),0);String redirect="http://localhost:"+server.getAddress().getPort();
         server.createContext("/",exchange->{
             try{
                 Map<String,String> query=new HashMap<>();String raw=exchange.getRequestURI().getRawQuery();if(raw!=null)for(String pair:raw.split("&")){String[] parts=pair.split("=",2);query.put(URLDecoder.decode(parts[0],StandardCharsets.UTF_8),parts.length>1?URLDecoder.decode(parts[1],StandardCharsets.UTF_8):"");}
