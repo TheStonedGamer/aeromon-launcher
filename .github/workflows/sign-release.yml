@@ -69,9 +69,11 @@ jobs:
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/arch-source" "$RUNNER_TEMP/arch-output"
           cp packaging/arch/PKGBUILD packaging/arch/aeromon.desktop "$RUNNER_TEMP/arch-source/"
+          BUNDLE_SHA256=$(sha256sum "$RUNNER_TEMP/release/Aeromon-$VERSION-linux-x64.tar.gz" | cut -d ' ' -f 1)
           docker run --rm \
             --env VERSION="$VERSION" \
             --env AEROMON_LINUX_BUNDLE_URL="file:///runner-temp/release/Aeromon-$VERSION-linux-x64.tar.gz" \
+            --env AEROMON_LINUX_BUNDLE_SHA256="$BUNDLE_SHA256" \
             --volume "$RUNNER_TEMP:/runner-temp" \
             archlinux:base-devel bash -euc '
               pacman -Syyu --noconfirm base-devel freetype2 fontconfig libx11 libxext libxi libxrender libxtst alsa-lib xdg-utils
@@ -79,7 +81,7 @@ jobs:
               mkdir -p /tmp/aeromon-build
               cp -a /runner-temp/arch-source/. /tmp/aeromon-build/
               chown -R builder:builder /tmp/aeromon-build
-              su - builder -c "cd /tmp/aeromon-build && AEROMON_LINUX_BUNDLE_URL=$AEROMON_LINUX_BUNDLE_URL makepkg --noconfirm --syncdeps --cleanbuild"
+              su - builder -c "cd /tmp/aeromon-build && VERSION=$VERSION AEROMON_LINUX_BUNDLE_URL=$AEROMON_LINUX_BUNDLE_URL AEROMON_LINUX_BUNDLE_SHA256=$AEROMON_LINUX_BUNDLE_SHA256 makepkg --noconfirm --syncdeps --cleanbuild"
               cp /tmp/aeromon-build/aeromon-launcher-bin-$VERSION-1-x86_64.pkg.tar.zst /runner-temp/arch-output/
             '
           test -f "$RUNNER_TEMP/arch-output/aeromon-launcher-bin-$VERSION-1-x86_64.pkg.tar.zst"
