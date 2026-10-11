@@ -77,7 +77,7 @@ def verify_payloads(manifest: dict, output: pathlib.Path) -> pathlib.Path:
 
     with zipfile.ZipFile(jar_path) as archive:
         class_file = archive.read("cc/aeromon/launcher/Minecraft.class")
-        if b"127.0.0.1" not in class_file:
+        if b"localhost" not in class_file:
             raise ValueError("Launcher Minecraft class is missing its loopback OAuth callback")
         manifest_text = archive.read("META-INF/MANIFEST.MF").decode("utf-8", errors="replace")
         if f"Implementation-Version: {manifest['version']}" not in manifest_text:
