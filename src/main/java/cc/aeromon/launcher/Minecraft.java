@@ -61,7 +61,7 @@ final class Minecraft {
         try {
             String scope="XboxLive.signin offline_access";
             String url="https://login.microsoftonline.com/consumers/oauth2/v2.0/authorize?client_id="+encode(clientId)+"&response_type=code&redirect_uri="+encode(redirect)+"&scope="+encode(scope)+"&state="+state+"&code_challenge="+challenge+"&code_challenge_method=S256&prompt=select_account";
-            Desktop.getDesktop().browse(URI.create(url));progress.accept("Complete Microsoft sign-in in your browser, then return here.");
+            DesktopActions.browse(URI.create(url));progress.accept("Complete Microsoft sign-in in your browser, then return here.");
             String code=callback.get(10,TimeUnit.MINUTES);
             var ms=post("https://login.microsoftonline.com/consumers/oauth2/v2.0/token","application/x-www-form-urlencoded","client_id="+encode(clientId)+"&grant_type=authorization_code&code="+encode(code)+"&redirect_uri="+encode(redirect)+"&code_verifier="+encode(verifier));
             var gson=new Gson();var props=new JsonObject();props.addProperty("AuthMethod","RPS");props.addProperty("SiteName","user.auth.xboxlive.com");props.addProperty("RpsTicket","d="+ms.get("access_token").getAsString());var body=new JsonObject();body.add("Properties",props);body.addProperty("RelyingParty","http://auth.xboxlive.com");body.addProperty("TokenType","JWT");

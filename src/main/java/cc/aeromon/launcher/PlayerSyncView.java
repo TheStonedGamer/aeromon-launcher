@@ -21,7 +21,7 @@ final class PlayerSyncView {
             var sync=new PlayerSync(pack,account,branch,(completed,total)->app.transferProgress(action==0?"Uploading cloud backup":"Restoring cloud backup",completed,total));
             if(action==0){app.message("Uploading "+branch+" settings and JourneyMap...");sync.upload();app.message(branch+" player data uploaded for "+account.name());}
             else if(action==1){app.message("Restoring "+branch+" settings and JourneyMap...");sync.restore();app.message(branch+" player data restored; previous files retained in recovery copies");}
-            else Desktop.getDesktop().open(sync.state.toFile());
+            else DesktopActions.open(sync.state);
         });
     }
 }

@@ -18,7 +18,7 @@ final class ResourcePacksView {
         buttons.add(add);buttons.add(remove);buttons.add(folder);buttons.add(sync);content.add(buttons,BorderLayout.SOUTH);
         add.addActionListener(e->{var chooser=new JFileChooser();chooser.setMultiSelectionEnabled(true);chooser.setFileFilter(new FileNameExtensionFilter("Resource packs (*.zip)","zip"));if(chooser.showOpenDialog(dialog)==JFileChooser.APPROVE_OPTION){var selected=chooser.getSelectedFiles();app.run(()->{try{for(var file:selected)packs.add(file.toPath());app.message("Shared resource packs installed");}finally{Main.ui(reload);}});}});
         remove.addActionListener(e->{String selected=list.getSelectedValue();if(selected!=null&&JOptionPane.showConfirmDialog(dialog,"Remove "+selected+" from the shared collection and managed instance copies?","Remove resource pack",JOptionPane.OK_CANCEL_OPTION)==JOptionPane.OK_OPTION)app.run(()->{try{packs.remove(selected);}finally{Main.ui(reload);}});});
-        folder.addActionListener(e->app.run(()->Desktop.getDesktop().open(packs.storage.toFile())));
+        folder.addActionListener(e->app.run(()->DesktopActions.open(packs.storage)));
         sync.addActionListener(e->app.run(()->{packs.stopped();packs.syncInstances();app.message("Shared resource packs synced");}));
         reload.run();dialog.setContentPane(content);dialog.setSize(850,390);dialog.setLocationRelativeTo(app.window);dialog.setVisible(true);
     }catch(Exception e){JOptionPane.showMessageDialog(app.window,e.getMessage());}}

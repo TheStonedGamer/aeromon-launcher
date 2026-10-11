@@ -14,7 +14,7 @@ final class CustomModsView {
         toggle.addActionListener(e->{var selected=list.getSelectedValue();if(selected!=null)app.run(()->{try{if(selected instanceof CustomMods.OptionalMod mod)mods.toggleOptional(mod);else mods.toggle((CustomMods.Mod)selected);}finally{Main.ui(reload);}});});
         remove.addActionListener(e->{var selected=list.getSelectedValue();if(selected!=null)app.run(()->{try{if(selected instanceof CustomMods.OptionalMod mod){if(mod.enabled())mods.toggleOptional(mod);}else mods.remove((CustomMods.Mod)selected);}finally{Main.ui(reload);}});});
         optional.addActionListener(e->{var selected=list.getSelectedValue();if(selected==null)return;try{var mod=selected instanceof CustomMods.OptionalMod item?item:null;if(mod!=null)app.run(()->{try{mods.toggleOptional(mod);}finally{Main.ui(reload);}});}catch(Exception failure){JOptionPane.showMessageDialog(dialog,failure.getMessage());}});
-        folder.addActionListener(e->app.run(()->{java.nio.file.Files.createDirectories(app.pack.instance.resolve("mods"));Desktop.getDesktop().open(app.pack.instance.resolve("mods").toFile());}));
+        folder.addActionListener(e->app.run(()->{java.nio.file.Files.createDirectories(app.pack.instance.resolve("mods"));DesktopActions.open(app.pack.instance.resolve("mods"));}));
         reload.run();dialog.setContentPane(content);dialog.setSize(720,390);dialog.setLocationRelativeTo(app.window);dialog.setVisible(true);
     }catch(Exception e){JOptionPane.showMessageDialog(app.window,e.getMessage());}}
 }
